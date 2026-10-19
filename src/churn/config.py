@@ -13,71 +13,13 @@ DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
 
-PREPROCESSOR_PATH = MODELS_DIR / "preprocessor.joblib"
-MLP_MODEL_PATH = MODELS_DIR / "churn_mlp.pt"
 BASELINE_MODEL_PATH = MODELS_DIR / "baseline_logreg.joblib"
+CHAMPION_MODEL_PATH = MODELS_DIR / "champion.joblib"
 
-# Colunas categóricas.
-CATEGORICAL_COLUMNS = [
-    "ChildrenInHH",
-    "HandsetRefurbished",
-    "HandsetWebCapable",
-    "TruckOwner",
-    "RVOwner",
-    "Homeownership",
-    "BuysViaMailOrder",
-    "RespondsToMailOffers",
-    "OptOutMailings",
-    "NonUSTravel",
-    "OwnsComputer",
-    "HasCreditCard",
-    "NewCellphoneUser",
-    "NotNewCellphoneUser",
-    "OwnsMotorcycle",
-    "HandsetPriceUnknown",
-    "MadeCallToRetentionTeam",
-    "CreditRating",
-    "PrizmCode",
-    "Occupation",
-    "MaritalStatus",
-    "ServiceRegion",
-]
+# Corte de classificacao da API: 0,5, o mesmo usado nas metricas da CV. Os pesos de classe
+# deslocam as probabilidades para o lado do churn, entao 0,5 nao e a taxa base de 28,8%.
+PREDICTION_THRESHOLD = 0.5
 
-# Colunas numéricas contínuas/discretas.
-NUMERIC_COLUMNS = [
-    "MonthlyRevenue",
-    "MonthlyMinutes",
-    "TotalRecurringCharge",
-    "DirectorAssistedCalls",
-    "OverageMinutes",
-    "RoamingCalls",
-    "PercChangeMinutes",
-    "PercChangeRevenues",
-    "DroppedCalls",
-    "BlockedCalls",
-    "UnansweredCalls",
-    "CustomerCareCalls",
-    "ThreewayCalls",
-    "ReceivedCalls",
-    "OutboundCalls",
-    "InboundCalls",
-    "PeakCallsInOut",
-    "OffPeakCallsInOut",
-    "DroppedBlockedCalls",
-    "CallForwardingCalls",
-    "CallWaitingCalls",
-    "MonthsInService",
-    "UniqueSubs",
-    "ActiveSubs",
-    "Handsets",
-    "HandsetModels",
-    "CurrentEquipmentDays",
-    "AgeHH1",
-    "AgeHH2",
-    "RetentionCalls",
-    "RetentionOffersAccepted",
-    "ReferralsMadeBySubscriber",
-    "IncomeGroup",
-    "AdjustmentsToCreditRating",
-    "HandsetPrice",
-]
+# MLflow: mesmo backend e experimento usados no notebook.
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}")
+MLFLOW_EXPERIMENT = "churn-cell2cell"

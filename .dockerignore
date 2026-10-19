@@ -1,0 +1,28 @@
+# Ambiente e caches locais
+.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Git e editores
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Nao usados pela API (dados, experimentos, testes, docs)
+data/
+notebooks/
+tests/
+docs/
+mlflow.db
+mlruns/
+mlartifacts/
+
+# Modelos: so o champion.joblib entra na imagem (copiado explicitamente no Dockerfile)
+models/*
+!models/champion.joblib
+
+Dockerfile
+.dockerignore

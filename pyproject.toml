@@ -6,16 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.142.2",
-    "kagglehub>=1.0.2",
+    "lightgbm>=4.7.0",
     "loguru>=0.7.3",
-    "matplotlib>=3.11.2",
-    "mlflow>=3.17.1",
     "pandas>=3.0.6",
     "pydantic>=2.13.5",
-    "pytest>=9.1.1",
     "scikit-learn>=1.9.1",
-    "seaborn>=0.13.2",
     "uvicorn>=0.54.0",
+    "xgboost-cpu>=3.4.1",
 ]
 
 [build-system]
@@ -24,3 +21,23 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "churn"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.15.1",
+    "pytest>=9.1.1",
+]
+training = [
+    "kagglehub>=1.0.2",
+    "matplotlib>=3.11.2",
+    "mlflow>=3.17.1",
+    "seaborn>=0.13.2",
+]
+
+[tool.uv]
+# `uv sync` instala tudo localmente; a imagem Docker instala so as dependencias da API.
+default-groups = ["dev", "training"]
