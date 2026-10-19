@@ -41,18 +41,5 @@ def main():
         raise
 
 
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == "__main__":
+    main()
