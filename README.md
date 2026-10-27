@@ -5,16 +5,27 @@ Scikit-Learn em uma arquitetura modular e rastreado com MLflow.
 
 ## Problema de negócio
 
-Uma operadora de telecomunicações está perdendo clientes em ritmo acelerado. O objetivo é
-classificar os clientes pelo **risco de cancelamento (churn)**, para que a equipe de retenção aja
-antes que eles saiam.
+O problema tratado é a priorização de clientes para uma campanha de retenção. A equipe precisa
+ordenar a carteira por propensão de cancelamento usando dados de uso, cobrança, aparelho e perfil.
+O modelo apoia essa fila; não substitui a decisão da equipe nem prova que uma oferta causará retenção.
+
+**Pergunta de negócio:** se a equipe puder abordar apenas uma fração da carteira, o modelo encontra
+mais clientes que efetivamente cancelariam do que uma seleção aleatória?
 
 - **Métrica técnica principal:** AUC-ROC, porque mede a capacidade de ordenar os clientes por
   risco, sem depender de um ponto de corte, e é adequada para bases desbalanceadas.
 - **Métricas complementares:** PR-AUC, Recall, Precisão e F1. A acurácia aparece só como
   referência: um modelo que sempre prevê "não cancela" acerta 71% dos casos.
-- **Métrica de negócio:** valor líquido de churn evitado, ou seja, clientes retidos menos o custo
-  das ações de retenção (`cost_tradeoff_metrics` em `src/churn/metrics.py`).
+- **Métrica de negócio:** valor líquido estimado de churn evitado, calculado com premissas ilustrativas
+  de valor do cliente, sucesso da retenção e custo da ação (`cost_tradeoff_metrics` em
+  `src/churn/metrics.py`). Essas premissas ainda precisam de validação da operadora.
+
+### Escopo e limites
+
+O projeto cobre a seleção de uma base histórica, a comparação de classificadores binários, a
+persistência do pipeline vencedor e uma API local para inferência. Não cobre campanha real,
+experimento de retenção, calibragem operacional de probabilidades, monitoramento em produção ou
+integração com CRM.
 
 ## Dataset
 
@@ -50,6 +61,11 @@ a coluna e o valor com problema.
 ├── docs/reports/               # comparação dos modelos (CV) e avaliação final no teste (gerados no treino)
 ├── models/                     # modelos treinados (.joblib)
 ├── notebooks/                  # EDA, baseline e modelagem (experimentação)
+├── frontend/                   # dashboard React/Vite para a demonstração
+│   ├── src/main.jsx            # telas, gráficos e integração com a API
+│   ├── src/styles.css          # identidade visual responsiva
+│   ├── package.json            # dependências do frontend
+│   └── vite.config.js          # proxy local para a API FastAPI
 ├── src/churn/                  # código produtivo
 │   ├── main.py                 # fluxo completo: dados -> baseline -> comparação -> campeão -> teste
 │   ├── config.py               # caminhos, seed, MLflow
@@ -164,13 +180,13 @@ uv run python -c "import churn; print('ok')"  # ok
 
 Todos os comandos rodam a partir da raiz do projeto.
 
-### Fluxo completo (recomendado)
+### Fluxo de execução
 
 ```bash
 uv run python -m churn.main
 ```
 
-Executa as etapas em sequência, com logs e a duração de cada uma (cerca de 2 minutos):
+Executa as etapas em sequência, com logs e a duração de cada uma:
 
 1. **Dados:** usa o `data/raw/churn.csv` existente ou baixa o dataset se o arquivo não existir.
 2. **Baseline:** Dummy e Regressão Logística.
@@ -216,6 +232,8 @@ uv sync
 uv run pytest
 uv run python -m churn.main
 uv run uvicorn churn.api:app --reload
+npm --prefix frontend install
+npm --prefix frontend run dev
 ```
 
 ## API de inferência (FastAPI)
@@ -306,6 +324,58 @@ docker run -d --name churn-api -p 8000:8000 churn-api
 ```
 
 Depois, a API responde em http://127.0.0.1:8000/docs, e o `curl` da seção anterior funciona igual.
+
+## Dashboard React para a apresentação
+
+O projeto inclui uma interface React/Vite que organiza o produto em áreas operacionais e de
+governança:
+
+A descrição da contribuição do frontend, das telas, do roteiro de apresentação e dos critérios de
+aceite está em [`docs/frontend-demonstracao.md`](docs/frontend-demonstracao.md).
+
+```powershell
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
+Abra http://localhost:5173. O dashboard contém:
+
+- **Visão executiva:** problema, base, resultados no teste e fluxo de execução;
+- **Fila de retenção:** prévia do contrato operacional, ordenação por probabilidade e limites da
+  integração com CRM;
+- **Dados e EDA:** qualidade, ausências, distribuições, correlações e decisões de tratamento;
+- **Modelos e métricas:** comparação por validação cruzada e avaliação no teste reservado;
+- **Inferência / API:** payload de exemplo, chamada ao `/predict`, resposta e contrato da API;
+- **Controles de produto:** integrações, histórico de contato, monitoramento e teste incremental
+  aparecem como pendências explícitas; não são apresentados como funcionalidades implementadas.
+
+Para demonstrar a inferência pela API, mantenha a API em outro terminal:
+
+```powershell
+uv run uvicorn churn.api:app --reload
+```
+
+O Vite encaminha as chamadas `/api/*` para `http://127.0.0.1:8000`. Assim, o botão de inferência
+consulta o endpoint real `/predict` sem configuração manual de CORS.
+Antes da demonstração, gere os artefatos:
+
+```powershell
+uv run python -m churn.main
+```
+
+### O que falta para uma implantação comercial
+
+O frontend demonstra o fluxo de priorização, mas a implantação exigiria serviços que não fazem parte
+desta Fase 1:
+
+- integração com a carteira de clientes e o CRM;
+- autenticação, perfis e segregação por operadora;
+- registro das abordagens e do resultado de cada campanha;
+- monitoramento de latência, qualidade, drift e disponibilidade;
+- validação temporal e experimento incremental de retenção.
+
+Esses itens ficam como evolução do produto. A interface os exibe como pendências para não confundir
+um protótipo demonstrável com um sistema operacional já integrado.
 
 ```bash
 docker ps                     # coluna STATUS mostra "(healthy)" quando o /health responde
@@ -459,12 +529,12 @@ fidelidade), `UniqueSubs` e `CurrentEquipmentDays` (aparelho antigo).
 | Lift nos 10% de maior risco | 1,69 | **1,89** | +0,20 |
 | Churn alcançado abordando 20% da base | 30,6% | **33,7%** | +3,1 p.p. |
 
-- **O campeão supera o baseline de forma consistente:** a diferença de AUC é de +0,030, com
-  intervalo de confiança de 95% de **+0,022 a +0,038** (bootstrap pareado), sem incluir o zero. O
-  AUC no teste (0,677) é praticamente o mesmo da validação cruzada (0,678), então não há sinal de
-  overfitting.
+- **Comparação com o baseline:** a diferença de AUC no teste foi de +0,030, com intervalo de
+  confiança de 95% entre **+0,022 e +0,038** no bootstrap pareado. Nesta divisão, o AUC do teste
+  (0,677) ficou próximo do AUC médio da validação cruzada (0,678); isso não substitui validação
+  temporal ou acompanhamento em produção.
 - **Na campanha de retenção:** abordando os 10% de clientes de maior risco, 54,5% deles realmente
-  cancelariam (contra 28,8% ao acaso), quase 1,9 vez mais eficiente que uma escolha aleatória.
+  cancelariam, contra 28,8% na seleção aleatória. O lift observado foi de 1,89x.
 - **No corte de 0,5:** o campeão gera 376 falsos alarmes a menos, ao custo de deixar escapar 57
   clientes que cancelariam a mais. Com as premissas ilustrativas de custo (valor do cliente 1.000,
   30% de sucesso na retenção, custo da ação 50), o valor líquido evitado é ligeiramente maior
@@ -473,5 +543,3 @@ fidelidade), `UniqueSubs` e `CurrentEquipmentDays` (aparelho antigo).
   campanha, não para decidir cliente a cliente com alta certeza.
 
 A tabela completa está em `docs/reports/test_evaluation.md`.
-
-
