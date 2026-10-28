@@ -1,44 +1,58 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Activity,
-  AlertCircle,
-  ArrowUpRight,
-  BarChart3,
-  ClipboardList,
-  CheckCircle2,
-  ChevronRight,
-  CircleDollarSign,
-  Database,
-  Gauge,
-  LayoutDashboard,
+  Alert,
+  App as AntApp,
+  Badge,
+  Button,
+  Card,
+  Col,
+  ConfigProvider,
+  Descriptions,
+  Drawer,
+  Empty,
+  Flex,
+  Grid,
+  Input,
+  Layout,
+  List,
   Menu,
-  Network,
-  Play,
-  Radio,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Target,
-  Users,
-  X,
-} from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
+  Popconfirm,
+  Progress,
+  Row,
+  Segmented,
+  Select,
+  Space,
+  Spin,
+  Statistic,
+  Table,
+  Tag,
   Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  Typography,
+} from "antd";
+import ptBR from "antd/locale/pt_BR";
+import {
+  ApiOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  ExperimentOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  MenuOutlined,
+  OrderedListOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 
+const { Title, Text, Paragraph } = Typography;
+
+// Cliente real da base (CustomerID 3000002), o mesmo exemplo usado no Swagger da API.
 const exampleCustomer = {
   CustomerID: 3000002,
   MonthlyRevenue: 24,
@@ -96,132 +110,1210 @@ const exampleCustomer = {
   MaritalStatus: "No",
 };
 
-const riskData = [
-  { name: "Base", churn: 28.8 },
-  { name: "Teste", churn: 28.8 },
-];
+// Resultados documentados em docs/reports (validação cruzada e teste reservado).
 const modelData = [
-  { name: "Dummy", score: 0.500 },
-  { name: "MLP", score: 0.650 },
-  { name: "XGBoost", score: 0.657 },
-  { name: "Random Forest", score: 0.670 },
+  { name: "Dummy", score: 0.5 },
+  { name: "MLP", score: 0.65 },
   { name: "Logística", score: 0.652 },
+  { name: "XGBoost", score: 0.657 },
+  { name: "Random Forest", score: 0.67 },
   { name: "LightGBM", score: 0.678 },
 ];
+const concentrationData = [
+  { name: "Base de teste", value: 28.8 },
+  { name: "Top 20% do modelo", value: 48.6 },
+  { name: "Top 10% do modelo", value: 54.5 },
+];
+const testMetrics = [
+  { metric: "AUC-ROC", base: "0,647", winner: "0,677", gain: "+0,030" },
+  { metric: "PR-AUC", base: "0,412", winner: "0,454", gain: "+0,043" },
+  { metric: "Precisão", base: "0,380", winner: "0,404", gain: "+0,023" },
+  { metric: "Recall", base: "0,650", winner: "0,631", gain: "−0,019", negative: true },
+  { metric: "Lift no top 10%", base: "1,69x", winner: "1,89x", gain: "+0,20" },
+];
 
-function App() {
-  const [active, setActive] = useState("overview");
-  const [mobileOpen, setMobileOpen] = useState(false);
+const CHART_PRIMARY = "#1677ff";
+const CHART_NEUTRAL = "#d9d9d9";
+
+const STORAGE_KEY = "churn-batch-runs";
+const MAX_RUNS = 10;
+const BATCH_SIZES = [5, 20, 50];
+const TOP_SHARE = 0.1;
+const CREDIT_RATINGS = ["1-Highest", "2-High", "3-Good", "4-Medium", "5-Low", "6-VeryLow", "7-Lowest"];
+
+const PAGES = [
+  { key: "overview", label: "Visão geral", icon: <DashboardOutlined /> },
+  { key: "data", label: "Dados & EDA", icon: <DatabaseOutlined /> },
+  { key: "models", label: "Modelos & métricas", icon: <BarChartOutlined /> },
+  { key: "api", label: "API & inferência", icon: <ApiOutlined /> },
+  { key: "queue", label: "Fila de retenção", icon: <OrderedListOutlined /> },
+  { key: "runs", label: "Base de lotes", icon: <HistoryOutlined /> },
+];
+
+const API_STATUS = {
+  checking: { status: "processing", text: "Verificando API" },
+  online: { status: "success", text: "API online" },
+  degraded: { status: "warning", text: "API sem modelo" },
+  offline: { status: "error", text: "API offline" },
+};
+
+const SOURCES = {
+  documented: { label: "Resultado documentado", color: "default", icon: <FileTextOutlined />, title: "Valor registrado no notebook e nos relatórios do pipeline (docs/reports)." },
+  api: { label: "Retorno da API", color: "blue", icon: <ApiOutlined />, title: "Valor devolvido pela API FastAPI nesta sessão ou registrado no histórico local." },
+  synthetic: { label: "Dado sintético", color: "gold", icon: <ExperimentOutlined />, title: "Gerado no navegador apenas para a demonstração. Não é registro da base Cell2Cell." },
+};
+
+const PRIORITY = {
+  high: { label: "Alta", color: "red", next: "Revisar com a equipe de retenção" },
+  medium: { label: "Média", color: "orange", next: "Avaliar critério com o negócio" },
+  low: { label: "Baixa", color: "default", next: "Manter em monitoramento" },
+};
+
+const integer = (value) => value.toLocaleString("pt-BR");
+const decimal = (digits) => (value) => value.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+// Variáveis sorteadas em cada cliente sintético; as demais vêm do cliente de exemplo.
+const GENERATED_FIELDS = [
+  { key: "MonthsInService", label: "Meses de contrato", short: "Meses", format: integer },
+  { key: "MonthlyRevenue", label: "Receita mensal", short: "Receita", format: decimal(2) },
+  { key: "MonthlyMinutes", label: "Minutos por mês", short: "Min/mês", format: integer },
+  { key: "PercChangeMinutes", label: "Variação de minutos", short: "Var. min", format: integer },
+  { key: "OverageMinutes", label: "Minutos excedentes", short: "Excedente", format: integer },
+  { key: "TotalRecurringCharge", label: "Cobrança recorrente", short: "Recorrente", format: integer },
+  { key: "CustomerCareCalls", label: "Chamadas ao atendimento", short: "Atend.", format: decimal(1) },
+  { key: "DroppedCalls", label: "Chamadas derrubadas", short: "Derrub.", format: decimal(1) },
+  { key: "CurrentEquipmentDays", label: "Dias com o aparelho atual", short: "Aparelho (dias)", format: integer },
+  { key: "CreditRating", label: "Rating de crédito", short: "Crédito", format: (value) => value },
+  { key: "HandsetWebCapable", label: "Aparelho com internet", short: "Internet", format: (value) => (value === "Yes" ? "Sim" : "Não") },
+  { key: "IncomeGroup", label: "Faixa de renda", short: "Renda", format: integer },
+];
+
+const formatPercent = (value) => `${decimal(1)(value * 100)}%`;
+const formatThreshold = (value) => value.toLocaleString("pt-BR");
+const formatDate = (value) => new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+const formatField = (field, input) => (input?.[field.key] == null ? "—" : field.format(input[field.key]));
+
+class ApiError extends Error {
+  constructor(message, kind) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+// kind: "offline" (sem resposta), "degraded" (API sem modelo) ou "request" (API no ar, requisição recusada).
+async function requestJson(path, body) {
+  const options = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined;
+  let response;
+  try {
+    response = await fetch(path, options);
+  } catch {
+    throw new ApiError("A API não respondeu. Verifique se ela está em execução em http://127.0.0.1:8000.", "offline");
+  }
+  const data = await response.json().catch(() => null);
+  if (response.ok) return data;
+  const detail = typeof data?.detail === "string" ? data.detail : null;
+  if (response.status === 503) throw new ApiError(detail || "A API está no ar, mas o modelo não foi carregado.", "degraded");
+  if (response.status === 422) throw new ApiError("A API recusou o payload (erro de validação 422).", "request");
+  // Sem corpo da API, o erro veio do proxy do Vite: o backend não está respondendo.
+  if (!data) throw new ApiError(`A API não respondeu (proxy retornou ${response.status}). Verifique se ela está em execução.`, "offline");
+  throw new ApiError(detail || `A API retornou erro ${response.status}.`, "request");
+}
+
+const apiStateFromError = (error) => (error.kind === "request" ? "online" : error.kind || "offline");
+
+function isValidPrediction(item) {
+  return (
+    item != null &&
+    Number.isFinite(item.churn_probability) &&
+    item.churn_probability >= 0 &&
+    item.churn_probability <= 1 &&
+    (item.churn_prediction === 0 || item.churn_prediction === 1) &&
+    Number.isFinite(item.threshold)
+  );
+}
+
+function loadRuns() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((run) => typeof run?.id === "string" && Array.isArray(run.predictions) && run.predictions.length > 0 && run.predictions.every(isValidPrediction))
+      .slice(0, MAX_RUNS);
+  } catch {
+    return [];
+  }
+}
+
+function saveRuns(runs) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
+  } catch {
+    // Sem acesso ao localStorage o histórico fica só na memória da aba.
+  }
+}
+
+const randomBetween = (min, max) => min + Math.random() * (max - min);
+const randomInt = (min, max) => Math.floor(randomBetween(min, max + 1));
+const pick = (items) => items[randomInt(0, items.length - 1)];
+const roundTo = (value, digits) => Number(value.toFixed(digits));
+
+// Faixas escolhidas para a demonstração; não reproduzem a distribuição da base.
+function createDemoCustomer(index, sequence) {
+  const input = {
+    MonthsInService: randomInt(6, 60),
+    MonthlyRevenue: roundTo(randomBetween(10, 120), 2),
+    MonthlyMinutes: randomInt(0, 1200),
+    PercChangeMinutes: randomInt(-400, 300),
+    OverageMinutes: Math.random() < 0.6 ? 0 : randomInt(1, 150),
+    TotalRecurringCharge: randomInt(10, 80),
+    CustomerCareCalls: Math.random() < 0.5 ? 0 : roundTo(randomBetween(0.3, 10), 1),
+    DroppedCalls: roundTo(randomBetween(0, 20), 1),
+    CurrentEquipmentDays: randomInt(10, 1200),
+    CreditRating: pick(CREDIT_RATINGS),
+    HandsetWebCapable: pick(["Yes", "No"]),
+    IncomeGroup: randomInt(0, 9),
+  };
+  const payload = {
+    ...exampleCustomer,
+    ...input,
+    CustomerID: 9100000 + sequence * 1000 + index,
+    DroppedBlockedCalls: roundTo(input.DroppedCalls + exampleCustomer.BlockedCalls, 1),
+  };
+  return { payload, input };
+}
+
+const nextSequence = (runs) => (Math.max(0, ...runs.map((run) => run.sequence || 0)) + 1) % 900;
+
+// Ordena o lote pela probabilidade e define a prioridade relativa (top 10% do lote).
+function buildQueue(run) {
+  const sorted = [...run.predictions].sort((a, b) => b.churn_probability - a.churn_probability);
+  const topCount = Math.max(1, Math.ceil(sorted.length * TOP_SHARE));
+  return sorted.map((item, index) => ({
+    ...item,
+    rank: index + 1,
+    priority: index < topCount ? "high" : item.churn_prediction ? "medium" : "low",
+  }));
+}
+
+function flattenRuns(runs) {
+  return runs.flatMap((run) => buildQueue(run).map((item) => ({ ...item, runId: run.id, createdAt: run.createdAt, runSize: run.predictions.length })));
+}
+
+const rowKey = (row) => `${row.runId}:${row.CustomerID}`;
+
+function exportCsv(rows) {
+  const header = ["lote", "data", "CustomerID", ...GENERATED_FIELDS.map((field) => field.key), "churn_probability", "churn_prediction", "threshold", "posicao_no_lote", "prioridade", "origem"];
+  const cell = (value) => {
+    if (value == null) return "";
+    const text = typeof value === "number" ? String(value).replace(".", ",") : String(value);
+    return /[;"\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const lines = rows.map((row) =>
+    [row.runId, row.createdAt, row.CustomerID, ...GENERATED_FIELDS.map((field) => row.input?.[field.key]), row.churn_probability, row.churn_prediction, row.threshold, row.rank, PRIORITY[row.priority].label, "entrada sintética; probabilidade da API"]
+      .map(cell)
+      .join(";"),
+  );
+  const blob = new Blob([`﻿${[header.join(";"), ...lines].join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "lotes-sinteticos-churn.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const pageFromHash = () => {
+  const key = window.location.hash.slice(1);
+  return PAGES.some((item) => item.key === key) ? key : "overview";
+};
+
+function Dashboard() {
+  const { message } = AntApp.useApp();
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.lg === false;
+  const [active, setActive] = useState(pageFromHash);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [apiState, setApiState] = useState("checking");
   const [prediction, setPrediction] = useState(null);
+  const [predictError, setPredictError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState("");
+  const [batchRuns, setBatchRuns] = useState(loadRuns);
+  const [selectedRunId, setSelectedRunId] = useState(null);
+
+  const selectedRun = batchRuns.find((run) => run.id === selectedRunId) || batchRuns[0] || null;
+
+  const checkHealth = useCallback(async () => {
+    setApiState("checking");
+    try {
+      const health = await requestJson("/api/health");
+      setApiState(health?.model_loaded ? "online" : "degraded");
+    } catch (error) {
+      setApiState(apiStateFromError(error));
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then(() => setApiState("online"))
-      .catch(() => setApiState("offline"));
+    checkHealth();
+  }, [checkHealth]);
+
+  useEffect(() => {
+    saveRuns(batchRuns);
+  }, [batchRuns]);
+
+  useEffect(() => {
+    const onHashChange = () => setActive(pageFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   const predict = async () => {
     setLoading(true);
+    setPredictError("");
     try {
-      const response = await fetch("/api/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(exampleCustomer),
-      });
-      if (!response.ok) throw new Error("API indisponível");
-      setPrediction(await response.json());
+      const result = await requestJson("/api/predict", exampleCustomer);
+      if (!isValidPrediction(result)) throw new ApiError("A resposta da API não segue o contrato esperado.", "request");
+      setPrediction(result);
       setApiState("online");
-    } catch {
-      setApiState("offline");
+    } catch (error) {
+      // Sem resposta válida não há probabilidade para mostrar, nem a da consulta anterior.
+      setPrediction(null);
+      setPredictError(error.message);
+      setApiState(apiStateFromError(error));
     } finally {
       setLoading(false);
     }
   };
 
+  const runBatch = async (size) => {
+    setBatchLoading(true);
+    setBatchError("");
+    const sequence = nextSequence(batchRuns);
+    const customers = Array.from({ length: size }, (_, index) => createDemoCustomer(index, sequence));
+    const startedAt = performance.now();
+    try {
+      const result = await requestJson("/api/predict/batch", { customers: customers.map((customer) => customer.payload) });
+      const predictions = result?.predictions;
+      if (!Array.isArray(predictions) || predictions.length !== customers.length || !predictions.every(isValidPrediction)) {
+        throw new ApiError("A resposta da API não segue o contrato esperado.", "request");
+      }
+      // A API devolve as previsões na mesma ordem dos clientes enviados.
+      const run = {
+        id: `LOTE-${Date.now()}`,
+        sequence,
+        createdAt: new Date().toISOString(),
+        durationMs: Math.round(performance.now() - startedAt),
+        predictions: predictions.map((item, index) => ({ ...item, input: customers[index].input })),
+      };
+      setBatchRuns((current) => [run, ...current].slice(0, MAX_RUNS));
+      setSelectedRunId(run.id);
+      setApiState("online");
+      message.success(`Lote registrado com ${size} clientes.`);
+    } catch (error) {
+      setBatchError(error.message);
+      setApiState(apiStateFromError(error));
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const clearRuns = () => {
+    setBatchRuns([]);
+    setSelectedRunId(null);
+    message.info("Histórico local apagado.");
+  };
+
+  const navigate = (page) => {
+    setActive(page);
+    if (window.location.hash !== `#${page}`) window.location.hash = page;
+    setMenuOpen(false);
+    window.scrollTo({ top: 0 });
+  };
+
+  const openQueue = (runId) => {
+    setSelectedRunId(runId);
+    navigate("queue");
+  };
+
+  const batch = {
+    runs: batchRuns,
+    selectedRun,
+    loading: batchLoading,
+    error: batchError,
+    onRun: runBatch,
+    onSelect: setSelectedRunId,
+    onOpenQueue: openQueue,
+    onClear: clearRuns,
+  };
+  const predictionProps = { prediction, error: predictError, loading, onPredict: predict };
+
   const page = {
-    overview: <Overview onPredict={predict} prediction={prediction} loading={loading} />,
-    portfolio: <PortfolioView onPredict={predict} prediction={prediction} loading={loading} />,
+    overview: <Overview predictionProps={predictionProps} />,
     data: <DataView />,
     models: <ModelsView />,
-    api: <ApiView apiState={apiState} onPredict={predict} prediction={prediction} loading={loading} />,
+    api: <ApiView apiState={apiState} predictionProps={predictionProps} batch={batch} onNavigate={navigate} />,
+    queue: <QueueView apiState={apiState} batch={batch} onNavigate={navigate} />,
+    runs: <RunsView batch={batch} onNavigate={navigate} />,
   }[active];
 
+  const menu = (
+    <Menu
+      mode="inline"
+      selectedKeys={[active]}
+      onClick={({ key }) => navigate(key)}
+      items={PAGES.map(({ key, label, icon }) => ({
+        key,
+        icon,
+        label: key === "runs" && batchRuns.length ? <Flex justify="space-between" align="center">{label}<Badge count={batchRuns.length} color="#8c8c8c" size="small" /></Flex> : label,
+      }))}
+      style={{ borderInlineEnd: 0 }}
+    />
+  );
+  const status = API_STATUS[apiState];
+
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
-        <div className="brand">
-          <div className="brand-mark"><Radio size={21} /></div>
-          <div><strong>Churn<span>IQ</span></strong><small>CELL2CELL / CHURN</small></div>
-          <button className="mobile-close" onClick={() => setMobileOpen(false)}><X size={20} /></button>
-        </div>
-        <div className="workspace"><span className="live-dot" /> Base Cell2Cell <ChevronRight size={14} /></div>
-        <nav>
-          <NavItem icon={<LayoutDashboard size={18} />} label="Visão geral" active={active === "overview"} onClick={() => { setActive("overview"); setMobileOpen(false); }} />
-          <NavItem icon={<ClipboardList size={18} />} label="Fila de retenção" active={active === "portfolio"} onClick={() => { setActive("portfolio"); setMobileOpen(false); }} />
-          <NavItem icon={<Database size={18} />} label="Dados & EDA" active={active === "data"} onClick={() => { setActive("data"); setMobileOpen(false); }} />
-          <NavItem icon={<BarChart3 size={18} />} label="Modelos & métricas" active={active === "models"} onClick={() => { setActive("models"); setMobileOpen(false); }} />
-          <NavItem icon={<Network size={18} />} label="API & inferência" active={active === "api"} onClick={() => { setActive("api"); setMobileOpen(false); }} />
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="progress-label"><span>Escopo do protótipo</span><b>EDA · ML · API</b></div>
-          <div className="sidebar-note"><Sparkles size={16} /><span>Dados, modelo e inferência no mesmo fluxo</span></div>
-        </div>
-      </aside>
-      {mobileOpen && <div className="scrim" onClick={() => setMobileOpen(false)} />}
-      <main className="main-content">
-        <header className="topbar">
-          <button className="mobile-menu" onClick={() => setMobileOpen(true)}><Menu size={22} /></button>
-          <div className="breadcrumb"><span>Tech Challenge</span><ChevronRight size={14} /><b>Fase 1</b></div>
-          <div className="top-actions"><span className={`status-pill ${apiState}`}><span /> API {apiState === "online" ? "online" : apiState === "offline" ? "offline" : "verificando"}</span><div className="avatar">JV</div></div>
-        </header>
-        <div className="page-wrap">{page}</div>
-      </main>
-    </div>
+    <Layout className="app-layout">
+      {!isMobile && (
+        <Layout.Sider width={232} theme="light" className="app-sider">
+          <div className="sider-title">
+            <Text strong>Retenção de Clientes</Text>
+            <Text type="secondary">Previsão de churn com ML</Text>
+          </div>
+          {menu}
+        </Layout.Sider>
+      )}
+      <Drawer placement="left" open={isMobile && menuOpen} onClose={() => setMenuOpen(false)} width={260} title="Menu" styles={{ body: { padding: 0 } }}>
+        {menu}
+      </Drawer>
+      <Layout>
+        <Layout.Header className="app-header">
+          <Space size="middle">
+            {isMobile && <Button type="text" icon={<MenuOutlined />} onClick={() => setMenuOpen(true)} aria-label="Abrir menu" />}
+            <Title level={4} style={{ margin: 0 }}>Tech Challenge FIAP · Fase 1</Title>
+          </Space>
+          <Space>
+            <Badge status={status.status} text={status.text} />
+            <Tooltip title="Verificar API novamente">
+              <Button type="text" icon={<ReloadOutlined />} onClick={checkHealth} loading={apiState === "checking"} aria-label="Verificar API novamente" />
+            </Tooltip>
+          </Space>
+        </Layout.Header>
+        <Layout.Content className="app-content">{page}</Layout.Content>
+        <Layout.Footer className="app-footer">
+          Camada de demonstração. A análise e o treinamento estão no notebook e no pipeline Python; a inferência, na API FastAPI.
+        </Layout.Footer>
+      </Layout>
+    </Layout>
   );
 }
 
-function NavItem({ icon, label, active, onClick }) {
-  return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>{icon}<span>{label}</span>{active && <ChevronRight size={15} />}</button>;
+function PageHeader({ title, description, extra }) {
+  return (
+    <Flex className="page-header" justify="space-between" align="flex-end" gap={16} wrap>
+      <div>
+        <Title level={3} style={{ margin: 0 }}>{title}</Title>
+        <Paragraph type="secondary" style={{ margin: "4px 0 0", maxWidth: 720 }}>{description}</Paragraph>
+      </div>
+      {extra && <Space wrap>{extra}</Space>}
+    </Flex>
+  );
 }
 
-function PageTitle({ eyebrow, title, description, action }) {
-  return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action}</div>;
+function SourceTag({ kind }) {
+  const { label, color, icon, title } = SOURCES[kind];
+  return (
+    <Tooltip title={title}>
+      <Tag color={color} icon={icon} style={{ marginInlineEnd: 0 }}>{label}</Tag>
+    </Tooltip>
+  );
 }
 
-function Overview({ onPredict, prediction, loading }) {
-  return <><PageTitle eyebrow="VISÃO GERAL / 01" title={<>Risco de cancelamento,<br /><em>com evidência.</em></>} description="Leitura executiva da base Cell2Cell, do modelo escolhido e da chamada de inferência." action={<button className="primary-btn" onClick={onPredict}><Play size={16} fill="currentColor" /> Consultar cliente exemplo</button>} />
-    <div className="hero-grid">
-      <div className="hero-card"><div className="hero-top"><div><span className="card-label">TAXA HISTÓRICA DE CHURN</span><div className="hero-number">28,8<span>%</span></div><div className="trend"><Database size={14} /> 51.047 clientes na base</div></div><div className="hero-icon"><Target size={24} /></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height={120}><AreaChart data={riskData}><defs><linearGradient id="risk" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c7f36b" stopOpacity=".32" /><stop offset="100%" stopColor="#c7f36b" stopOpacity="0" /></linearGradient></defs><XAxis dataKey="name" hide /><YAxis hide /><Tooltip content={<ChartTip suffix="%" />} /><Area type="monotone" dataKey="churn" stroke="#c7f36b" strokeWidth={2.5} fill="url(#risk)" /></AreaChart></ResponsiveContainer></div><div className="chart-foot"><span>AMOSTRA HISTÓRICA</span><span>APENAS ILUSTRAÇÃO DA EDA</span></div></div>
-      <div className="side-stat"><span className="card-label">RESULTADOS DO TESTE</span><div className="stat-main">AUC 0,677</div><p>LightGBM no conjunto reservado de 10.209 clientes.</p><div className="mini-divider" /><div className="stat-row"><span><CircleDollarSign size={15} /> AUC do baseline</span><b>0,647</b></div><div className="stat-row"><span><Users size={15} /> Precisão no top 10%</span><b>54,5%</b></div><div className="stat-row"><span><ShieldCheck size={15} /> Lift no top 10%</span><b className="green">1,89x</b></div></div>
-    </div>
-    <div className="section-heading"><div><h2>Fluxo do projeto</h2><p>Da pergunta de negócio à chamada de inferência.</p></div><span className="section-meta"><CheckCircle2 size={15} /> Escopo da Fase 1</span></div>
-    <div className="pipeline"><PipelineStep number="01" icon={<Users size={19} />} title="Definir" text="Churn e retenção" done /><PipelineStep number="02" icon={<Database size={19} />} title="Explorar" text="51.047 clientes Cell2Cell" done /><PipelineStep number="03" icon={<Gauge size={19} />} title="Comparar" text="4 modelos + baseline" done /><PipelineStep number="04" icon={<Activity size={19} />} title="Servir" text="FastAPI /predict" current /></div>
-    <div className="bottom-grid"><div className="insight-card"><div className="insight-icon"><Sparkles size={19} /></div><div><span className="card-label">RESULTADO NO TESTE</span><h3>O top 10% concentra 54,5% de churn</h3><p>O lift de 1,89x sustenta o uso do modelo para ordenar a fila da campanha, não para decidir sozinho.</p></div><ArrowUpRight className="insight-arrow" size={20} /></div><div className="demo-card"><div><span className="card-label">CLIENTE DE EXEMPLO</span><h3>Consultar o CustomerID 3000002</h3><p>Envie o payload da documentação para a API.</p></div><button className="round-btn" onClick={onPredict} disabled={loading}>{loading ? "..." : <Play size={18} fill="currentColor" />}</button>{prediction && <div className="demo-result">Probabilidade: <b>{(prediction.churn_probability * 100).toFixed(1)}%</b></div>}</div></div>
-  </>;
+const sources = (...kinds) => <Space size={4} wrap>{kinds.map((kind) => <SourceTag key={kind} kind={kind} />)}</Space>;
+
+function StatCard({ title, value, detail, source }) {
+  return (
+    <Card size="small" style={{ height: "100%" }}>
+      <Statistic title={title} value={value} />
+      <Text type="secondary">{detail}</Text>
+      {source && <div style={{ marginTop: 8 }}><SourceTag kind={source} /></div>}
+    </Card>
+  );
 }
 
-function PortfolioView({ onPredict, prediction, loading }) {
-  return <><PageTitle eyebrow="OPERAÇÃO / 02" title={<>Fila de retenção<br /><em>orientada por risco.</em></>} description="A área onde a equipe escolhe quem abordar, com qual prioridade e usando qual canal." action={<button className="secondary-btn"><SlidersHorizontal size={16} /> Filtros da campanha</button>} />
-    <div className="notice-panel"><div className="notice-icon"><AlertCircle size={19} /></div><div><b>Integração de carteira pendente</b><p>A API atual recebe um cliente ou um lote para inferência. A fila abaixo mostra o contrato da operação; a conexão com CRM e histórico de ações fica fora do escopo desta fase.</p></div><span className="scope-tag">FORA DO ESCOPO ATUAL</span></div>
-    <div className="kpi-row"><Kpi title="Regra de priorização" value="Probabilidade" detail="Ordenar do maior para o menor risco" icon={<Target />} /><Kpi title="Janela sugerida" value="Top 10%" detail="Precisão observada: 54,5%" icon={<Users />} /><Kpi title="Ação do time" value="Retenção" detail="Oferta definida pelo negócio" icon={<ClipboardList />} /><Kpi title="Origem do score" value="API" detail="POST /predict ou /predict/batch" icon={<Network />} /></div>
-    <div className="content-grid"><div className="panel large"><PanelTitle title="Prévia da fila" subtitle="Cliente usado na documentação da API" /><div className="queue-table"><div className="queue-head"><span>CLIENTE</span><span>RISCO</span><span>STATUS</span><span>PRÓXIMO PASSO</span></div><div className="queue-row"><div><b>CustomerID 3000002</b><small>61 meses · SEAPOR503 · 2 aparelhos</small></div><strong className="risk-text">{prediction ? `${(prediction.churn_probability * 100).toFixed(1)}%` : "—"}</strong><span className="queue-status">Aguardando ação</span><button className="table-action" onClick={onPredict} disabled={loading}>{loading ? "Consultando" : prediction ? "Atualizar score" : "Calcular score"} <ArrowUpRight size={14} /></button></div></div><div className="empty-queue"><ClipboardList size={22} /><span>Para uma fila real, envie um lote de clientes pelo endpoint <code>/predict/batch</code>.</span></div></div><div className="panel"><PanelTitle title="Regra de decisão" subtitle="O que o score significa" /><div className="rule-block"><div className="rule-line"><span className="rule-mark high" /><div><b>Alta prioridade</b><p>Clientes no topo da ordenação da campanha.</p></div></div><div className="rule-line"><span className="rule-mark medium" /><div><b>Avaliar com o negócio</b><p>O threshold 0,5 é uma configuração inicial, não uma política de retenção validada.</p></div></div><div className="rule-line"><span className="rule-mark low" /><div><b>Sem decisão automática</b><p>O modelo não dispara ofertas nem altera o cadastro do cliente.</p></div></div></div></div></div>
-    <div className="panel full-panel"><PanelTitle title="Controles necessários antes de vender" subtitle="Itens que transformam o protótipo em produto operacional" /><div className="control-grid"><Control title="Integração CRM" text="Receber carteira e devolver campanha." status="Pendente" /><Control title="Histórico de contato" text="Evitar abordar o mesmo cliente repetidamente." status="Pendente" /><Control title="Monitoramento" text="Acompanhar drift, latência e qualidade do score." status="Pendente" /><Control title="Teste incremental" text="Medir retenção causada pela campanha." status="Pendente" /></div></div>
-  </>;
+function StatRow({ items }) {
+  return (
+    <Row gutter={[16, 16]} className="section">
+      {items.map((item) => (
+        <Col key={item.title} xs={12} lg={6}>
+          <StatCard {...item} />
+        </Col>
+      ))}
+    </Row>
+  );
 }
 
-function PipelineStep({ number, icon, title, text, done, current }) { return <div className={`pipeline-step ${current ? "current" : ""}`}><div className="step-number">{done ? <CheckCircle2 size={17} /> : number}</div><div className="step-icon">{icon}</div><div><b>{title}</b><span>{text}</span></div>{!current && <ChevronRight className="step-arrow" size={17} />}</div>; }
-function ChartTip({ active, payload, label, suffix = "" }) { return active && payload?.length ? <div className="chart-tip"><b>{label}</b><span>{Number(payload[0].value).toFixed(suffix ? 1 : 3)}{suffix}</span></div> : null; }
+function ApiNotice({ apiState }) {
+  if (apiState === "offline") {
+    return (
+      <Alert
+        className="section"
+        type="error"
+        showIcon
+        message="API indisponível"
+        description={<>Inicie com <Text code>uv run uvicorn churn.api:app --reload</Text>. Sem resposta da API, nenhuma probabilidade é exibida nem registrada.</>}
+      />
+    );
+  }
+  if (apiState === "degraded") {
+    return (
+      <Alert
+        className="section"
+        type="warning"
+        showIcon
+        message="API no ar, mas sem modelo carregado"
+        description={<>Gere o modelo com <Text code>uv run python -m churn.main</Text> e reinicie a API.</>}
+      />
+    );
+  }
+  return null;
+}
 
-function DataView() { return <><PageTitle eyebrow="DATA LAYER / 02" title={<>Conheça a base<br /><em>antes de modelar.</em></>} description="Qualidade, comportamento e sinais que orientaram o pré-processamento." /><div className="kpi-row"><Kpi title="Registros" value="51.047" detail="2 removidos na limpeza" icon={<Database />} /><Kpi title="Variáveis" value="58" detail="56 features + ID + target" icon={<BarChart3 />} /><Kpi title="Missing crítico" value="56,8%" detail="HandsetPrice desconhecido" icon={<AlertCircle />} /><Kpi title="Duplicidades" value="0" detail="CustomerID validado" icon={<ShieldCheck />} /></div><div className="content-grid"><div className="panel large"><PanelTitle title="Perfil de churn" subtitle="Distribuição do target na base Cell2Cell" /><div className="donut-area"><ResponsiveContainer width="48%" height={230}><PieChart><Pie data={[{ name: "Não churn", value: 71.2 }, { name: "Churn", value: 28.8 }]} innerRadius={68} outerRadius={92} dataKey="value" stroke="none"><Cell fill="#c7f36b" /><Cell fill="#60708d" /></Pie><text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" fill="#f2f5f9" fontSize="25" fontWeight="700">28,8%</text><text x="50%" y="58%" textAnchor="middle" fill="#8290a8" fontSize="11">CHURN</text></PieChart></ResponsiveContainer><div className="legend-list"><div><i className="dot lime" /><span>Não churn</span><b>71,2%</b></div><div><i className="dot blue" /><span>Churn</span><b>28,8%</b></div><p>O desbalanceamento torna AUC-ROC e PR-AUC mais úteis que acurácia isolada.</p></div></div></div><div className="panel"><PanelTitle title="Decisões de tratamento" subtitle="Transparência do pipeline" /><Decision text="Imputação pela mediana" /><Decision text="One-hot encoding" /><Decision text="Flags de ausência" /><Decision text="Leakage removido" /><Decision text="Teste reservado" /></div></div><div className="panel full-panel"><PanelTitle title="Sinais encontrados na EDA" subtitle="Hipóteses que viraram features" /><div className="signal-grid"><Signal label="Fidelidade" value="11–12 meses" text="Janela de maior risco ao fim do contrato" /><Signal label="Equipamento" value="361 dias" text="Aparelho antigo aparece entre os sinais" /><Signal label="Campanha" value="Top 10%" text="54,5% realmente cancelariam" /></div></div></>; }
-function ModelsView() { return <><PageTitle eyebrow="MODEL LAB / 03" title={<>Do baseline ao<br /><em>modelo campeão.</em></>} description="Comparação justa, validação estratificada e avaliação em clientes nunca vistos." action={<div className="champion-badge"><Sparkles size={16} /> CAMPEÃO: LIGHTGBM</div>} /><div className="model-layout"><div className="panel chart-panel"><PanelTitle title="AUC-ROC por modelo" subtitle="Validação cruzada · 5 folds" /><ResponsiveContainer width="100%" height={280}><BarChart data={modelData} layout="vertical" margin={{ left: 12, right: 20 }}><CartesianGrid stroke="#27344a" horizontal={false} /><XAxis type="number" domain={[0.45, 0.72]} hide /><YAxis dataKey="name" type="category" width={90} tick={{ fill: "#93a1b6", fontSize: 11 }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTip />} /><Bar dataKey="score" radius={[0, 5, 5, 0]}>{modelData.map((entry) => <Cell key={entry.name} fill={entry.name === "LightGBM" ? "#c7f36b" : "#3a4c68"} />)}</Bar></BarChart></ResponsiveContainer></div><div className="panel champion-panel"><span className="card-label">MODELO ESCOLHIDO</span><div className="champion-logo"><Sparkles size={22} /></div><h2>LightGBM</h2><p>Sem seleção de features</p><div className="score-big">0,678 <small>AUC-ROC CV</small></div><div className="score-list"><div><span>Baseline</span><b>0,652</b></div><div><span>Ganho</span><b className="green">+0,026</b></div><div><span>Teste reservado</span><b>0,677</b></div></div></div></div><div className="panel full-panel"><PanelTitle title="Avaliação final no teste" subtitle="10.209 clientes nunca vistos no treinamento" /><div className="metrics-table"><div className="table-head"><span>MÉTRICA</span><span>BASELINE</span><span>CAMPEÃO</span><span>GANHO</span></div><MetricRow label="AUC-ROC" base="0,647" winner="0,677" gain="+0,030" /><MetricRow label="PR-AUC" base="0,412" winner="0,454" gain="+0,043" /><MetricRow label="Precisão" base="0,380" winner="0,404" gain="+0,023" /><MetricRow label="Recall" base="0,650" winner="0,631" gain="−0,019" negative /><MetricRow label="Lift no top 10%" base="1,69x" winner="1,89x" gain="+0,20" /></div></div></>; }
-function ApiView({ apiState, onPredict, prediction, loading }) { return <><PageTitle eyebrow="DECISION API / 04" title={<>Uma previsão.<br /><em>Uma próxima ação.</em></>} description="O modelo persistido transforma o cadastro de um cliente em propensão de churn em milissegundos." action={<span className={`status-pill big ${apiState}`}><span /> {apiState === "online" ? "API conectada" : "API não conectada"}</span>} /><div className="api-layout"><div className="panel request-panel"><div className="code-head"><span><span className="method">POST</span> /predict</span><span className="live-code"><span /> LIVE</span></div><div className="code-body"><span className="code-muted">{"{"}</span><br />&nbsp;&nbsp;<CodeKey>CustomerID</CodeKey>: <CodeValue>3000002</CodeValue>,<br />&nbsp;&nbsp;<CodeKey>MonthlyRevenue</CodeKey>: <CodeValue>24.0</CodeValue>,<br />&nbsp;&nbsp;<CodeKey>MonthsInService</CodeKey>: <CodeValue>61</CodeValue>,<br />&nbsp;&nbsp;<CodeKey>CreditRating</CodeKey>: <CodeString>"1-Highest"</CodeString>,<br />&nbsp;&nbsp;<CodeKey>HandsetWebCapable</CodeKey>: <CodeString>"Yes"</CodeString>,<br />&nbsp;&nbsp;<span className="code-muted">...</span><br /><span className="code-muted">{"}"}</span></div><button className="primary-btn full" onClick={onPredict} disabled={loading}><Play size={16} fill="currentColor" /> {loading ? "Consultando..." : "Executar inferência"}</button></div><div className="panel response-panel"><div className="code-head"><span>Resposta do modelo</span><span className="response-code">200 OK</span></div>{prediction ? <><div className="risk-result"><div className="risk-circle"><strong>{(prediction.churn_probability * 100).toFixed(1)}<small>%</small></strong><span>probabilidade</span></div><div><span className="card-label">AÇÃO RECOMENDADA</span><h2>{prediction.churn_prediction ? "Priorizar retenção" : "Monitorar cliente"}</h2><p>Threshold configurado: {prediction.threshold}</p></div></div><div className="response-items"><span>Customer ID <b>{prediction.CustomerID}</b></span><span>Predição <b className={prediction.churn_prediction ? "red" : "green"}>{prediction.churn_prediction ? "CHURN" : "NÃO CHURN"}</b></span></div></> : <div className="empty-response"><Network size={28} /><p>Clique em executar para consultar o modelo campeão.</p></div>}</div></div><div className="endpoint-row"><Endpoint method="GET" path="/health" text="Status do serviço e do modelo" /><Endpoint method="POST" path="/predict/batch" text="Até 1.000 clientes por chamada" /><Endpoint method="GET" path="/docs" text="Swagger interativo" /></div></>; }
-function CodeKey({ children }) { return <span className="code-key">{children}</span>; } function CodeValue({ children }) { return <span className="code-value">{children}</span>; } function CodeString({ children }) { return <span className="code-string">{children}</span>; }
-function Kpi({ title, value, detail, icon }) { return <div className="kpi-card"><div className="kpi-icon">{icon}</div><span className="card-label">{title}</span><strong>{value}</strong><small>{detail}</small></div>; }
-function PanelTitle({ title, subtitle }) { return <div className="panel-title"><div><h3>{title}</h3><p>{subtitle}</p></div><MoreDots /></div>; } function MoreDots() { return <span className="dots">•••</span>; }
-function Decision({ text }) { return <div className="decision"><CheckCircle2 size={16} /><span>{text}</span></div>; } function Signal({ label, value, text }) { return <div className="signal"><span className="card-label">{label}</span><b>{value}</b><p>{text}</p></div>; } function MetricRow({ label, base, winner, gain, negative }) { return <div className="table-row"><span>{label}</span><span>{base}</span><strong>{winner}</strong><span className={negative ? "negative" : "green"}>{gain}</span></div>; } function Endpoint({ method, path, text }) { return <div className="endpoint"><span className={`method ${method === "GET" ? "get" : ""}`}>{method}</span><b>{path}</b><small>{text}</small></div>; }
-function Control({ title, text, status }) { return <div className="control"><span className="control-icon"><SlidersHorizontal size={16} /></span><div><b>{title}</b><p>{text}</p></div><span className="scope-tag">{status}</span></div>; }
+function Overview({ predictionProps }) {
+  return (
+    <>
+      <PageHeader
+        title="Visão geral"
+        description="Previsão de churn de clientes de telecomunicações com a base Cell2Cell. O modelo ordena os clientes pela probabilidade de cancelamento para apoiar uma campanha de retenção."
+      />
+      <StatRow
+        items={[
+          { title: "Clientes na base", value: "51.047", detail: "Base bruta; 51.045 após a limpeza", source: "documented" },
+          { title: "Churn histórico", value: "28,8%", detail: "Proporção observada na base", source: "documented" },
+          { title: "AUC-ROC no teste", value: "0,677", detail: "LightGBM · baseline 0,647", source: "documented" },
+          { title: "Lift no top 10%", value: "1,89x", detail: "Baseline: 1,69x", source: "documented" },
+        ]}
+      />
+      <Row gutter={[16, 16]} className="section">
+        <Col xs={24} lg={14}>
+          <Card title="Churn encontrado na fila ordenada pelo modelo" extra={<SourceTag kind="documented" />} style={{ height: "100%" }}>
+            <Text type="secondary">Conjunto de teste reservado, 10.209 clientes</Text>
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={concentrationData} margin={{ top: 24, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: "#595959", fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis hide domain={[0, 65]} />
+                <ChartTooltip formatter={(value) => [`${decimal(1)(value)}%`, "Churn"]} cursor={{ fill: "#fafafa" }} />
+                <Bar dataKey="value" isAnimationActive={false} maxBarSize={64}>
+                  {concentrationData.map((entry, index) => (
+                    <Cell key={entry.name} fill={index === 0 ? CHART_NEUTRAL : CHART_PRIMARY} />
+                  ))}
+                  <LabelList dataKey="value" position="top" formatter={(value) => `${decimal(1)(value)}%`} fill="#262626" fontSize={12} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Entre os 10% de clientes com maior probabilidade, 54,5% cancelaram, contra 28,8% na base de teste inteira. O modelo serve para ordenar a fila; a oferta e a decisão continuam com o negócio.
+            </Paragraph>
+          </Card>
+        </Col>
+        <Col xs={24} lg={10}>
+          <Card title="Pergunta de negócio" style={{ height: "100%" }}>
+            <Paragraph>
+              Se a equipe só consegue abordar parte da carteira, o modelo encontra mais clientes que cancelariam do que uma escolha aleatória?
+            </Paragraph>
+            <Descriptions
+              column={1}
+              size="small"
+              items={[
+                { key: "dados", label: "Dados", children: "51.047 clientes e 58 colunas, com tratamento sem vazamento do alvo." },
+                { key: "modelos", label: "Modelos", children: "Dummy, regressão logística (baseline), MLP, XGBoost, Random Forest e LightGBM." },
+                { key: "avaliacao", label: "Avaliação", children: "Validação cruzada em 5 folds e teste reservado com 20% da base." },
+                { key: "entrega", label: "Entrega", children: "Modelo campeão servido pela FastAPI, para um cliente ou em lote." },
+              ]}
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Card
+        title="Consultar o cliente de exemplo"
+        extra={<Space wrap>{predictionProps.prediction && <SourceTag kind="api" />}<PredictButton {...predictionProps} /></Space>}
+      >
+        <Paragraph type="secondary">CustomerID 3000002, registro real da base, enviado para <Text code>POST /predict</Text>.</Paragraph>
+        <PredictionResult {...predictionProps} />
+      </Card>
+    </>
+  );
+}
 
-createRoot(document.getElementById("root")).render(<App />);
+function PredictButton({ loading, onPredict }) {
+  return (
+    <Button type="primary" icon={<PlayCircleOutlined />} loading={loading} onClick={onPredict}>
+      Consultar API
+    </Button>
+  );
+}
+
+function ProbabilityBar({ value, width = 120 }) {
+  return <Progress percent={Math.round(value * 1000) / 10} showInfo={false} size={[width, 6]} strokeColor={CHART_PRIMARY} />;
+}
+
+function PredictionResult({ prediction, error, loading }) {
+  if (loading) return <Flex justify="center" style={{ padding: 32 }}><Spin tip="Consultando a API..."><div style={{ width: 120, height: 40 }} /></Spin></Flex>;
+  if (error) return <Alert type="error" showIcon message="Consulta não realizada" description={`${error} Nenhuma probabilidade foi exibida.`} />;
+  if (!prediction) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhuma consulta feita nesta sessão." />;
+  const above = prediction.churn_prediction === 1;
+  return (
+    <>
+      <Row gutter={[24, 16]} align="middle">
+        <Col xs={24} md={8}>
+          <Statistic title="Probabilidade de churn" value={formatPercent(prediction.churn_probability)} />
+          <ProbabilityBar value={prediction.churn_probability} width={180} />
+        </Col>
+        <Col xs={24} md={16}>
+          <Descriptions
+            bordered
+            size="small"
+            column={1}
+            items={[
+              { key: "id", label: "CustomerID", children: prediction.CustomerID ?? "—" },
+              { key: "pred", label: "churn_prediction", children: <Space>{prediction.churn_prediction}<ClassTag value={prediction.churn_prediction} /></Space> },
+              { key: "threshold", label: "threshold", children: formatThreshold(prediction.threshold) },
+            ]}
+          />
+        </Col>
+      </Row>
+      <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+        {above ? "Candidato a avaliação pela equipe de retenção." : "Sugestão: manter em monitoramento."} O corte de {formatThreshold(prediction.threshold)} é a configuração atual da API, não uma regra de negócio validada.
+      </Paragraph>
+    </>
+  );
+}
+
+function DataView() {
+  return (
+    <>
+      <PageHeader title="Dados & EDA" description="Qualidade da base, distribuição do alvo e decisões de tratamento que orientaram o pré-processamento." />
+      <StatRow
+        items={[
+          { title: "Registros", value: "51.047", detail: "2 removidos na limpeza", source: "documented" },
+          { title: "Colunas", value: "58", detail: "56 variáveis + ID + alvo", source: "documented" },
+          { title: "Maior ausência", value: "56,8%", detail: "HandsetPrice como Unknown", source: "documented" },
+          { title: "Duplicidades", value: "0", detail: "CustomerID validado", source: "documented" },
+        ]}
+      />
+      <Row gutter={[16, 16]} className="section">
+        <Col xs={24} lg={14}>
+          <Card title="Distribuição do alvo" extra={<SourceTag kind="documented" />} style={{ height: "100%" }}>
+            <Row gutter={16} align="middle">
+              <Col xs={24} sm={12}>
+                <ResponsiveContainer width="100%" height={210}>
+                  <PieChart>
+                    <Pie data={[{ name: "Não cancelou", value: 71.2 }, { name: "Cancelou", value: 28.8 }]} innerRadius={60} outerRadius={86} dataKey="value" stroke="#fff" startAngle={90} endAngle={-270} isAnimationActive={false}>
+                      <Cell fill={CHART_NEUTRAL} />
+                      <Cell fill={CHART_PRIMARY} />
+                    </Pie>
+                    <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#262626" fontSize="20" fontWeight="600">28,8%</text>
+                  </PieChart>
+                </ResponsiveContainer>
+              </Col>
+              <Col xs={24} sm={12}>
+                <Descriptions
+                  column={1}
+                  size="small"
+                  items={[
+                    { key: "nao", label: <Badge color={CHART_NEUTRAL} text="Não cancelou" />, children: "71,2%" },
+                    { key: "sim", label: <Badge color={CHART_PRIMARY} text="Cancelou" />, children: "28,8%" },
+                  ]}
+                />
+                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  Com o alvo desbalanceado, AUC-ROC e PR-AUC dizem mais sobre o modelo do que a acurácia isolada.
+                </Paragraph>
+              </Col>
+            </Row>
+          </Card>
+        </Col>
+        <Col xs={24} lg={10}>
+          <Card title="Decisões de tratamento" style={{ height: "100%" }}>
+            <List
+              size="small"
+              dataSource={[
+                "Imputação pela mediana do treino",
+                "One-hot encoding das categóricas",
+                "Flags de ausência",
+                "Variáveis de retenção removidas (vazamento do alvo)",
+                "Teste reservado antes de qualquer ajuste",
+              ]}
+              renderItem={(item) => (
+                <List.Item>
+                  <Space><CheckCircleOutlined style={{ color: "#52c41a" }} />{item}</Space>
+                </List.Item>
+              )}
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Card title="Sinais encontrados na EDA" extra={<SourceTag kind="documented" />}>
+        <Descriptions
+          bordered
+          size="small"
+          column={{ xs: 1, md: 3 }}
+          layout="vertical"
+          items={[
+            { key: "fid", label: "Fidelidade", children: <><Text strong>11–12 meses</Text><br /><Text type="secondary">Janela de maior risco perto do fim do contrato.</Text></> },
+            { key: "eq", label: "Equipamento", children: <><Text strong>Aparelho antigo</Text><br /><Text type="secondary">Tempo com o aparelho atual aparece entre os sinais.</Text></> },
+            { key: "camp", label: "Campanha", children: <><Text strong>Top 10%</Text><br /><Text type="secondary">54,5% dos clientes nessa faixa cancelaram no teste.</Text></> },
+          ]}
+        />
+      </Card>
+    </>
+  );
+}
+
+function ModelsView() {
+  return (
+    <>
+      <PageHeader title="Modelos & métricas" description="Comparação com validação estratificada e avaliação final em clientes que o modelo não viu no treinamento." />
+      <Row gutter={[16, 16]} className="section">
+        <Col xs={24} lg={14}>
+          <Card title="AUC-ROC por modelo" extra={<SourceTag kind="documented" />} style={{ height: "100%" }}>
+            <Text type="secondary">Validação cruzada, 5 folds</Text>
+            <ResponsiveContainer width="100%" height={270}>
+              <BarChart data={modelData} layout="vertical" margin={{ left: 8, right: 44, top: 8 }}>
+                <CartesianGrid stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" domain={[0.45, 0.7]} hide />
+                <YAxis dataKey="name" type="category" width={96} tick={{ fill: "#595959", fontSize: 12 }} axisLine={false} tickLine={false} />
+                <ChartTooltip formatter={(value) => [decimal(3)(value), "AUC-ROC"]} cursor={{ fill: "#fafafa" }} />
+                <Bar dataKey="score" isAnimationActive={false} maxBarSize={20}>
+                  {modelData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.name === "LightGBM" ? CHART_PRIMARY : CHART_NEUTRAL} />
+                  ))}
+                  <LabelList dataKey="score" position="right" formatter={(value) => decimal(3)(value)} fill="#262626" fontSize={12} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+        <Col xs={24} lg={10}>
+          <Card title="Modelo escolhido" extra={<SourceTag kind="documented" />} style={{ height: "100%" }}>
+            <Statistic title="LightGBM · AUC-ROC médio na validação cruzada" value="0,678" />
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              style={{ marginTop: 16 }}
+              items={[
+                { key: "base", label: "Baseline (regressão logística)", children: "0,652" },
+                { key: "diff", label: "Diferença na validação", children: "+0,026" },
+                { key: "test", label: "AUC-ROC no teste reservado", children: "0,677" },
+                { key: "sel", label: "Seleção de variáveis", children: "Não" },
+              ]}
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Card title="Avaliação final no teste" extra={<SourceTag kind="documented" />}>
+        <Paragraph type="secondary">10.209 clientes reservados, corte de 0,5.</Paragraph>
+        <Table
+          size="middle"
+          rowKey="metric"
+          pagination={false}
+          dataSource={testMetrics}
+          scroll={{ x: 480 }}
+          columns={[
+            { title: "Métrica", dataIndex: "metric" },
+            { title: "Baseline", dataIndex: "base", align: "right" },
+            { title: "LightGBM", dataIndex: "winner", align: "right", render: (value) => <Text strong>{value}</Text> },
+            { title: "Diferença", dataIndex: "gain", align: "right", render: (value, row) => <Text type={row.negative ? "danger" : "success"}>{value}</Text> },
+          ]}
+        />
+        <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+          O recall do LightGBM ficou abaixo do baseline no corte de 0,5. O ganho está na ordenação (AUC, PR-AUC e lift), que é o uso proposto para a fila de retenção.
+        </Paragraph>
+      </Card>
+    </>
+  );
+}
+
+const PAYLOAD_PREVIEW = `{
+  "CustomerID": 3000002,
+  "MonthlyRevenue": 24.0,
+  "MonthsInService": 61,
+  "CurrentEquipmentDays": 361,
+  "CreditRating": "1-Highest",
+  "HandsetWebCapable": "Yes",
+  ...
+}`;
+
+function ClassTag({ value }) {
+  return value ? <Tag color="red">Acima do corte</Tag> : <Tag>Abaixo do corte</Tag>;
+}
+
+function PriorityTag({ priority }) {
+  const { label, color } = PRIORITY[priority];
+  return <Tag color={color}>{label}</Tag>;
+}
+
+const probabilityColumn = {
+  title: "Probabilidade",
+  dataIndex: "churn_probability",
+  align: "right",
+  render: (value) => <Text strong>{formatPercent(value)}</Text>,
+};
+
+function ApiView({ apiState, predictionProps, batch, onNavigate }) {
+  const [size, setSize] = useState(5);
+  const latest = batch.runs[0];
+  return (
+    <>
+      <PageHeader title="API & inferência" description="Chamadas reais à API FastAPI que serve o modelo campeão. Nenhuma probabilidade é calculada no navegador." />
+      <ApiNotice apiState={apiState} />
+      <Row gutter={[16, 16]} className="section">
+        <Col xs={24} lg={12}>
+          <Card title="Requisição" extra={<PredictButton {...predictionProps} />} style={{ height: "100%" }}>
+            <Paragraph type="secondary"><Text code>POST /predict</Text> com o cliente 3000002.</Paragraph>
+            <pre className="code-block">{PAYLOAD_PREVIEW}</pre>
+            <Text type="secondary">Trecho do payload. A requisição envia todas as variáveis do schema da API.</Text>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Resposta" extra={predictionProps.prediction && <SourceTag kind="api" />} style={{ height: "100%" }}>
+            <PredictionResult {...predictionProps} />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card
+        className="section"
+        title="Simulador de lote"
+        extra={<SourceTag kind="synthetic" />}
+      >
+        <Flex gap={12} wrap align="center" style={{ marginBottom: 16 }}>
+          <Text>Quantidade de clientes:</Text>
+          <Segmented options={BATCH_SIZES} value={size} onChange={setSize} disabled={batch.loading} />
+          <Button type="primary" icon={<PlayCircleOutlined />} loading={batch.loading} onClick={() => batch.onRun(size)}>
+            Gerar e consultar {size} clientes
+          </Button>
+        </Flex>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Como os clientes são gerados"
+          description={`Cada cliente parte do cadastro do exemplo 3000002 e recebe valores aleatórios em ${GENERATED_FIELDS.length} variáveis, dentro de faixas definidas para a demonstração. Os IDs começam com 91 e não existem na base. A probabilidade de cada linha é a devolvida por POST /predict/batch.`}
+        />
+        {batch.error && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message="Lote não registrado" description={`${batch.error} Nenhuma previsão foi criada nem salva no histórico.`} />
+        )}
+        {latest ? (
+          <>
+            <RunSummary run={latest} />
+            <BatchTable run={latest} loading={batch.loading} />
+            <Space wrap style={{ marginTop: 16 }}>
+              <Button onClick={() => batch.onOpenQueue(latest.id)}>Ver na fila de retenção</Button>
+              <Button onClick={() => onNavigate("runs")}>Consultar na base de lotes</Button>
+            </Space>
+          </>
+        ) : batch.loading ? (
+          <Flex justify="center" style={{ padding: 32 }}><Spin tip="Enviando o lote para a API..."><div style={{ width: 160, height: 40 }} /></Spin></Flex>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum lote enviado ainda." />
+        )}
+      </Card>
+
+      <Card title="Endpoints da API">
+        <Table
+          size="small"
+          rowKey="path"
+          pagination={false}
+          dataSource={[
+            { method: "GET", path: "/health", text: "Status do serviço e do modelo" },
+            { method: "POST", path: "/predict", text: "Probabilidade de churn de um cliente" },
+            { method: "POST", path: "/predict/batch", text: "Até 1.000 clientes por chamada" },
+            { method: "GET", path: "/docs", text: "Swagger interativo da API" },
+          ]}
+          columns={[
+            { title: "Método", dataIndex: "method", width: 90, render: (value) => <Tag color={value === "GET" ? "blue" : "green"}>{value}</Tag> },
+            { title: "Rota", dataIndex: "path", render: (value) => <Text code>{value}</Text> },
+            { title: "Uso", dataIndex: "text" },
+          ]}
+        />
+      </Card>
+    </>
+  );
+}
+
+function RunSummary({ run }) {
+  const above = run.predictions.filter((item) => item.churn_prediction === 1).length;
+  return (
+    <Descriptions
+      size="small"
+      style={{ marginBottom: 12 }}
+      column={{ xs: 1, sm: 2, lg: 5 }}
+      items={[
+        { key: "id", label: "Lote", children: <Text code>{run.id}</Text> },
+        { key: "date", label: "Data", children: formatDate(run.createdAt) },
+        { key: "n", label: "Clientes", children: run.predictions.length },
+        { key: "above", label: "Acima do corte", children: above },
+        { key: "time", label: "Tempo no navegador", children: run.durationMs != null ? `${run.durationMs} ms` : "—" },
+      ]}
+    />
+  );
+}
+
+// Retorno da API e entradas sorteadas lado a lado, na ordem em que o lote foi enviado.
+function BatchTable({ run, loading }) {
+  const columns = [
+    { title: "CustomerID", dataIndex: "CustomerID", fixed: "left", width: 110 },
+    {
+      title: "Retorno da API",
+      children: [
+        { ...probabilityColumn, width: 150, sorter: (a, b) => a.churn_probability - b.churn_probability },
+        { title: "Classificação", dataIndex: "churn_prediction", width: 140, render: (value) => <ClassTag value={value} /> },
+      ],
+    },
+    {
+      title: "Entrada gerada (sintética)",
+      children: GENERATED_FIELDS.map((field) => ({
+        title: <Tooltip title={`${field.label} (${field.key})`}>{field.short}</Tooltip>,
+        key: field.key,
+        align: "right",
+        width: 100,
+        render: (_, row) => formatField(field, row.input),
+      })),
+    },
+  ];
+  return (
+    <Table
+      size="small"
+      bordered
+      rowKey="CustomerID"
+      loading={loading}
+      dataSource={run.predictions}
+      columns={columns}
+      scroll={{ x: 1550 }}
+      pagination={run.predictions.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
+    />
+  );
+}
+
+function RunSelect({ batch }) {
+  if (!batch.runs.length) return null;
+  return (
+    <Space>
+      <Text type="secondary">Lote exibido:</Text>
+      <Select
+        value={batch.selectedRun.id}
+        onChange={batch.onSelect}
+        style={{ minWidth: 240 }}
+        options={batch.runs.map((run) => ({ value: run.id, label: `${formatDate(run.createdAt)} · ${run.predictions.length} clientes` }))}
+      />
+    </Space>
+  );
+}
+
+function describeInput(input) {
+  if (!input) return "Entradas não registradas (lote anterior a esta versão)";
+  return `${input.MonthsInService} meses · ${integer(input.MonthlyMinutes)} min/mês · aparelho com ${integer(input.CurrentEquipmentDays)} dias`;
+}
+
+const priorityFilters = Object.entries(PRIORITY).map(([value, { label }]) => ({ text: label, value }));
+
+function QueueView({ apiState, batch, onNavigate }) {
+  const run = batch.selectedRun;
+  const queue = run ? buildQueue(run) : [];
+  const above = queue.filter((item) => item.churn_prediction === 1).length;
+  const threshold = queue[0] ? formatThreshold(queue[0].threshold) : "0,5";
+
+  const columns = [
+    { title: "#", dataIndex: "rank", width: 56 },
+    {
+      title: "Cliente",
+      dataIndex: "CustomerID",
+      render: (value, row) => (
+        <>
+          <Text strong>{value}</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>{describeInput(row.input)}</Text>
+        </>
+      ),
+    },
+    {
+      title: "Probabilidade",
+      dataIndex: "churn_probability",
+      width: 150,
+      render: (value) => (
+        <>
+          <Text strong>{formatPercent(value)}</Text>
+          <ProbabilityBar value={value} />
+        </>
+      ),
+    },
+    { title: "Classificação", dataIndex: "churn_prediction", width: 140, render: (value) => <ClassTag value={value} /> },
+    { title: "Prioridade", dataIndex: "priority", width: 110, filters: priorityFilters, onFilter: (value, row) => row.priority === value, render: (value) => <PriorityTag priority={value} /> },
+    { title: "Status", key: "status", width: 120, render: () => <Tooltip title="Sem CRM conectado: nenhum contato registrado"><Tag>Não iniciada</Tag></Tooltip> },
+    { title: "Próximo passo", key: "next", render: (_, row) => PRIORITY[row.priority].next },
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title="Fila de retenção"
+        description="Clientes do lote ordenados pela probabilidade de churn devolvida pela API, do maior para o menor."
+        extra={<RunSelect batch={batch} />}
+      />
+      <ApiNotice apiState={apiState} />
+      <Alert
+        className="section"
+        type="warning"
+        showIcon
+        message="Fila de demonstração"
+        description="Os clientes são sintéticos, gerados no navegador e pontuados pela API real. Não há integração com CRM: nenhum contato é registrado e nenhuma oferta é disparada."
+      />
+      <StatRow
+        items={[
+          { title: "Clientes no lote", value: run ? run.predictions.length : "—", detail: run ? formatDate(run.createdAt) : "Nenhum lote gerado", source: "synthetic" },
+          { title: `Acima do corte (${threshold})`, value: run ? above : "—", detail: "churn_prediction = 1", source: "api" },
+          { title: "Maior probabilidade", value: run ? formatPercent(queue[0].churn_probability) : "—", detail: run ? `CustomerID ${queue[0].CustomerID}` : "—", source: "api" },
+          { title: "Referência do top 10%", value: "54,5%", detail: "Precisão no teste reservado", source: "documented" },
+        ]}
+      />
+      <Card className="section" title="Fila do lote">
+        {run && <div style={{ marginBottom: 12 }}>{sources("api", "synthetic")}</div>}
+        {run ? (
+          <Table
+            size="middle"
+            rowKey="CustomerID"
+            dataSource={queue}
+            columns={columns}
+            scroll={{ x: 960 }}
+            rowClassName={(row) => (row.priority === "high" ? "row-high" : "")}
+            pagination={queue.length > 20 ? { pageSize: 20, showSizeChanger: false } : false}
+          />
+        ) : (
+          <Empty description="A fila é montada a partir de um lote enviado à API.">
+            <Space wrap>
+              <Button type="primary" icon={<PlayCircleOutlined />} loading={batch.loading} onClick={() => batch.onRun(5)}>
+                Gerar e consultar 5 clientes
+              </Button>
+              <Button onClick={() => onNavigate("api")}>Abrir o simulador de lote</Button>
+            </Space>
+          </Empty>
+        )}
+        {batch.error && !run && <Alert type="error" showIcon style={{ marginTop: 16 }} message="Lote não registrado" description={batch.error} />}
+      </Card>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Card title="Como a prioridade é definida" style={{ height: "100%" }}>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={[
+                { key: "high", label: <PriorityTag priority="high" />, children: "Top 10% do lote pela probabilidade, com no mínimo um cliente. É uma posição relativa: em um lote de 5, só o primeiro." },
+                { key: "medium", label: <PriorityTag priority="medium" />, children: `Acima do corte da API (${threshold}), fora do top 10%. O corte é a configuração atual da API, não um critério validado pelo negócio.` },
+                { key: "low", label: <PriorityTag priority="low" />, children: "Abaixo do corte. Fica na lista apenas para monitoramento." },
+              ]}
+            />
+            <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
+              A probabilidade indica propensão, não certeza de cancelamento, e a fila não mede o efeito de uma campanha.
+            </Paragraph>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Antes de uma implantação comercial" style={{ height: "100%" }}>
+            <List
+              size="small"
+              dataSource={[
+                ["Integração com CRM", "Receber a carteira real e devolver a campanha."],
+                ["Autenticação", "Controlar quem consulta e quem altera a fila."],
+                ["Histórico de contato", "Evitar abordar o mesmo cliente repetidas vezes."],
+                ["Monitoramento", "Acompanhar drift, latência e qualidade do score."],
+                ["Validação temporal", "Confirmar o desempenho em períodos posteriores ao treino."],
+                ["Teste incremental", "Medir a retenção causada pela campanha com grupo de controle."],
+              ]}
+              renderItem={([title, text]) => (
+                <List.Item extra={<Tag color="orange">Pendente</Tag>}>
+                  <List.Item.Meta title={title} description={text} />
+                </List.Item>
+              )}
+            />
+          </Card>
+        </Col>
+      </Row>
+    </>
+  );
+}
+
+function RunsView({ batch, onNavigate }) {
+  const [query, setQuery] = useState("");
+  const [runFilter, setRunFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all");
+  const [selected, setSelected] = useState(null);
+
+  const rows = useMemo(() => flattenRuns(batch.runs), [batch.runs]);
+  const term = query.trim().toLowerCase();
+  const filtered = rows
+    .filter((row) => runFilter === "all" || row.runId === runFilter)
+    .filter((row) => classFilter === "all" || String(row.churn_prediction) === classFilter)
+    .filter((row) => !term || String(row.CustomerID).includes(term) || row.runId.toLowerCase().includes(term));
+
+  if (!batch.runs.length) {
+    return (
+      <>
+        <PageHeader title="Base de lotes" description="Consulta dos lotes sintéticos enviados à API neste navegador." />
+        <Card>
+          <Empty description="Os lotes aparecem aqui depois de enviados pelo simulador.">
+            <Button type="primary" onClick={() => onNavigate("api")}>Abrir o simulador de lote</Button>
+          </Empty>
+        </Card>
+      </>
+    );
+  }
+
+  const runColumns = [
+    { title: "Lote", dataIndex: "id", render: (value) => <Text code>{value}</Text> },
+    { title: "Data", dataIndex: "createdAt", render: formatDate },
+    { title: "Clientes", key: "n", align: "right", render: (_, run) => run.predictions.length },
+    { title: "Acima do corte", key: "above", align: "right", render: (_, run) => run.predictions.filter((item) => item.churn_prediction === 1).length },
+    { title: "Maior prob.", key: "max", align: "right", render: (_, run) => formatPercent(Math.max(...run.predictions.map((item) => item.churn_probability))) },
+    { title: "Tempo", dataIndex: "durationMs", align: "right", render: (value) => (value != null ? `${value} ms` : "—") },
+    {
+      title: "Ações",
+      key: "actions",
+      render: (_, run) => (
+        <Space>
+          <Button size="small" onClick={() => setRunFilter(runFilter === run.id ? "all" : run.id)}>{runFilter === run.id ? "Mostrar todos" : "Filtrar"}</Button>
+          <Button size="small" onClick={() => batch.onOpenQueue(run.id)}>Ver fila</Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const customerColumns = [
+    { title: "CustomerID", dataIndex: "CustomerID", render: (value, row) => <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setSelected(row)}>{value}</Button> },
+    { ...probabilityColumn, sorter: (a, b) => a.churn_probability - b.churn_probability, defaultSortOrder: "descend" },
+    { title: "Prioridade", dataIndex: "priority", filters: priorityFilters, onFilter: (value, row) => row.priority === value, render: (value) => <PriorityTag priority={value} /> },
+    { title: "Classificação", dataIndex: "churn_prediction", render: (value) => <ClassTag value={value} /> },
+    { title: "Posição", dataIndex: "rank", align: "right", sorter: (a, b) => a.rank - b.rank, render: (value, row) => `${value} de ${row.runSize}` },
+    { title: "Lote", dataIndex: "createdAt", sorter: (a, b) => a.createdAt.localeCompare(b.createdAt), render: formatDate },
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title="Base de lotes"
+        description="Consulta dos lotes sintéticos enviados à API neste navegador, com a entrada gerada e o retorno de cada cliente."
+        extra={
+          <>
+            <Button icon={<DownloadOutlined />} onClick={() => exportCsv(filtered)} disabled={!filtered.length}>Exportar CSV</Button>
+            <Popconfirm title="Apagar o histórico local?" description="Os lotes salvos neste navegador serão removidos." okText="Apagar" cancelText="Cancelar" okButtonProps={{ danger: true }} onConfirm={batch.onClear}>
+              <Button danger icon={<DeleteOutlined />}>Limpar histórico</Button>
+            </Popconfirm>
+          </>
+        }
+      />
+      <Alert
+        className="section"
+        type="info"
+        showIcon
+        message="Histórico local"
+        description={`Os ${MAX_RUNS} lotes mais recentes ficam no localStorage deste navegador. Não há banco compartilhado: os dados somem se o histórico do site for limpo ou se outro navegador for usado.`}
+      />
+      <Card className="section" title="Lotes registrados">
+        <div style={{ marginBottom: 12 }}>{sources("synthetic", "api")}</div>
+        <Table size="small" rowKey="id" dataSource={batch.runs} columns={runColumns} pagination={false} scroll={{ x: 820 }} rowClassName={(run) => (run.id === runFilter ? "ant-table-row-selected" : "")} />
+      </Card>
+      <Card title="Consulta de clientes" extra={<Text type="secondary">{filtered.length} de {rows.length} clientes</Text>}>
+        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+          <Col xs={24} md={10}>
+            <Input.Search allowClear placeholder="Buscar por CustomerID ou lote" value={query} onChange={(event) => setQuery(event.target.value)} />
+          </Col>
+          <Col xs={12} md={7}>
+            <Select
+              style={{ width: "100%" }}
+              value={runFilter}
+              onChange={setRunFilter}
+              options={[{ value: "all", label: "Todos os lotes" }, ...batch.runs.map((run) => ({ value: run.id, label: `${formatDate(run.createdAt)} · ${run.predictions.length}` }))]}
+            />
+          </Col>
+          <Col xs={12} md={7}>
+            <Select
+              style={{ width: "100%" }}
+              value={classFilter}
+              onChange={setClassFilter}
+              options={[{ value: "all", label: "Todas as classificações" }, { value: "1", label: "Acima do corte" }, { value: "0", label: "Abaixo do corte" }]}
+            />
+          </Col>
+        </Row>
+        <Table
+          size="small"
+          rowKey={rowKey}
+          dataSource={filtered}
+          columns={customerColumns}
+          scroll={{ x: 720 }}
+          onRow={(row) => ({ onClick: () => setSelected(row), style: { cursor: "pointer" } })}
+          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (total) => `${total} clientes` }}
+        />
+      </Card>
+      <CustomerDrawer row={selected} onClose={() => setSelected(null)} />
+    </>
+  );
+}
+
+function CustomerDrawer({ row, onClose }) {
+  return (
+    <Drawer open={Boolean(row)} onClose={onClose} width={420} title={row ? `CustomerID ${row.CustomerID}` : ""}>
+      {row && (
+        <>
+          <Text type="secondary">{row.runId} · {formatDate(row.createdAt)}</Text>
+          <Flex justify="space-between" align="center" style={{ margin: "20px 0 8px" }}>
+            <Title level={5} style={{ margin: 0 }}>Retorno da API</Title>
+            <SourceTag kind="api" />
+          </Flex>
+          <Statistic title="Probabilidade de churn" value={formatPercent(row.churn_probability)} />
+          <ProbabilityBar value={row.churn_probability} width={200} />
+          <Descriptions
+            bordered
+            size="small"
+            column={1}
+            style={{ marginTop: 12 }}
+            items={[
+              { key: "pred", label: "churn_prediction", children: <Space>{row.churn_prediction}<ClassTag value={row.churn_prediction} /></Space> },
+              { key: "threshold", label: "threshold", children: formatThreshold(row.threshold) },
+              { key: "rank", label: "Posição no lote", children: `${row.rank} de ${row.runSize}` },
+              { key: "priority", label: "Prioridade", children: <PriorityTag priority={row.priority} /> },
+            ]}
+          />
+          <Flex justify="space-between" align="center" style={{ margin: "24px 0 8px" }}>
+            <Title level={5} style={{ margin: 0 }}>Entrada gerada</Title>
+            <SourceTag kind="synthetic" />
+          </Flex>
+          {row.input ? (
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={GENERATED_FIELDS.map((field) => ({ key: field.key, label: <Tooltip title={field.key}>{field.label}</Tooltip>, children: formatField(field, row.input) }))}
+            />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Entradas não registradas: lote criado antes desta versão do simulador." />
+          )}
+          <Paragraph type="secondary" style={{ marginTop: 12 }}>As demais variáveis são iguais às do cliente de exemplo 3000002.</Paragraph>
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+function Root() {
+  return (
+    <ConfigProvider locale={ptBR}>
+      <AntApp>
+        <Dashboard />
+      </AntApp>
+    </ConfigProvider>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<Root />);

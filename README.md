@@ -327,7 +327,7 @@ Depois, a API responde em http://127.0.0.1:8000/docs, e o `curl` da seção ante
 
 ## Dashboard React para a apresentação
 
-O projeto inclui uma interface React/Vite que organiza o produto em áreas operacionais e de
+O projeto inclui uma interface React/Vite (componentes Ant Design e gráficos Recharts) que organiza o produto em áreas operacionais e de
 governança:
 
 A descrição da contribuição do frontend, das telas, do roteiro de apresentação e dos critérios de
@@ -340,14 +340,21 @@ npm --prefix frontend run dev
 
 Abra http://localhost:5173. O dashboard contém:
 
-- **Visão executiva:** problema, base, resultados no teste e fluxo de execução;
-- **Fila de retenção:** prévia do contrato operacional, ordenação por probabilidade e limites da
-  integração com CRM;
-- **Dados e EDA:** qualidade, ausências, distribuições, correlações e decisões de tratamento;
+- **Visão geral:** pergunta de negócio, base, resultados no teste e consulta do cliente de exemplo;
+- **Dados e EDA:** qualidade, ausências, distribuição do alvo e decisões de tratamento;
 - **Modelos e métricas:** comparação por validação cruzada e avaliação no teste reservado;
-- **Inferência / API:** payload de exemplo, chamada ao `/predict`, resposta e contrato da API;
-- **Controles de produto:** integrações, histórico de contato, monitoramento e teste incremental
-  aparecem como pendências explícitas; não são apresentados como funcionalidades implementadas.
+- **API e inferência:** chamada ao `/predict` e simulador de lote, que gera clientes sintéticos com
+  valores aleatórios, envia ao `/predict/batch` e mostra a entrada gerada ao lado do retorno da API;
+- **Fila de retenção:** clientes do lote selecionado ordenados por `churn_probability`, com
+  classificação, prioridade, status e próximo passo;
+- **Base de lotes:** consulta dos lotes executados neste navegador, com busca, filtros, detalhe por
+  cliente e exportação em CSV (histórico local, sem banco compartilhado);
+- **Controles de produto:** CRM, autenticação, histórico de contato, monitoramento, validação temporal
+  e teste incremental aparecem como pendências explícitas; não são apresentados como
+  funcionalidades implementadas.
+
+Cada valor exibido indica a origem: resultado documentado (notebook e relatórios do pipeline),
+retorno da API ou dado sintético de demonstração.
 
 Para demonstrar a inferência pela API, mantenha a API em outro terminal:
 
