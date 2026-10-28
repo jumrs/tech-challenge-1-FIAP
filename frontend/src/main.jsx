@@ -200,7 +200,7 @@ class ApiError extends Error {
   }
 }
 
-// kind: "offline" (sem resposta), "degraded" (API sem modelo) ou "request" (API no ar, requisição recusada).
+// kind: "offline", "degraded" (API sem modelo) ou "request" (API no ar, payload recusado).
 async function requestJson(path, body) {
   const options = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined;
   let response;
@@ -284,7 +284,7 @@ function createDemoCustomer(index, sequence) {
 
 const nextSequence = (runs) => (Math.max(0, ...runs.map((run) => run.sequence || 0)) + 1) % 900;
 
-// Ordena o lote pela probabilidade e define a prioridade relativa (top 10% do lote).
+// Prioridade relativa ao lote: top 10% = alta.
 function buildQueue(run) {
   const sorted = [...run.predictions].sort((a, b) => b.churn_probability - a.churn_probability);
   const topCount = Math.max(1, Math.ceil(sorted.length * TOP_SHARE));
@@ -377,7 +377,6 @@ function Dashboard() {
       setPrediction(result);
       setApiState("online");
     } catch (error) {
-      // Sem resposta válida não há probabilidade para mostrar, nem a da consulta anterior.
       setPrediction(null);
       setPredictError(error.message);
       setApiState(apiStateFromError(error));
@@ -501,7 +500,7 @@ function Dashboard() {
         </Layout.Header>
         <Layout.Content className="app-content">{page}</Layout.Content>
         <Layout.Footer className="app-footer">
-          Camada de demonstração. A análise e o treinamento estão no notebook e no pipeline Python; a inferência, na API FastAPI.
+          Tech Challenge FIAP · Fase 1 · Previsão de churn (Cell2Cell)
         </Layout.Footer>
       </Layout>
     </Layout>
@@ -561,7 +560,7 @@ function ApiNotice({ apiState }) {
         type="error"
         showIcon
         message="API indisponível"
-        description={<>Inicie com <Text code>uv run uvicorn churn.api:app --reload</Text>. Sem resposta da API, nenhuma probabilidade é exibida nem registrada.</>}
+        description={<>Inicie com <Text code>uv run uvicorn churn.api:app --reload</Text>.</>}
       />
     );
   }
@@ -660,7 +659,7 @@ function ProbabilityBar({ value, width = 120 }) {
 
 function PredictionResult({ prediction, error, loading }) {
   if (loading) return <Flex justify="center" style={{ padding: 32 }}><Spin tip="Consultando a API..."><div style={{ width: 120, height: 40 }} /></Spin></Flex>;
-  if (error) return <Alert type="error" showIcon message="Consulta não realizada" description={`${error} Nenhuma probabilidade foi exibida.`} />;
+  if (error) return <Alert type="error" showIcon message="Consulta não realizada" description={error} />;
   if (!prediction) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhuma consulta feita nesta sessão." />;
   const above = prediction.churn_prediction === 1;
   return (
@@ -684,7 +683,7 @@ function PredictionResult({ prediction, error, loading }) {
         </Col>
       </Row>
       <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
-        {above ? "Candidato a avaliação pela equipe de retenção." : "Sugestão: manter em monitoramento."} O corte de {formatThreshold(prediction.threshold)} é a configuração atual da API, não uma regra de negócio validada.
+        {above ? "Candidato a avaliação pela equipe de retenção." : "Sugestão: manter em monitoramento."} Corte atual da API: {formatThreshold(prediction.threshold)}.
       </Paragraph>
     </>
   );
@@ -866,7 +865,7 @@ function ApiView({ apiState, predictionProps, batch, onNavigate }) {
   const latest = batch.runs[0];
   return (
     <>
-      <PageHeader title="API & inferência" description="Chamadas reais à API FastAPI que serve o modelo campeão. Nenhuma probabilidade é calculada no navegador." />
+      <PageHeader title="API & inferência" description="Consultas à API FastAPI com o modelo campeão (LightGBM)." />
       <ApiNotice apiState={apiState} />
       <Row gutter={[16, 16]} className="section">
         <Col xs={24} lg={12}>
@@ -903,7 +902,7 @@ function ApiView({ apiState, predictionProps, batch, onNavigate }) {
           description={`Cada cliente parte do cadastro do exemplo 3000002 e recebe valores aleatórios em ${GENERATED_FIELDS.length} variáveis, dentro de faixas definidas para a demonstração. Os IDs começam com 91 e não existem na base. A probabilidade de cada linha é a devolvida por POST /predict/batch.`}
         />
         {batch.error && (
-          <Alert type="error" showIcon style={{ marginBottom: 16 }} message="Lote não registrado" description={`${batch.error} Nenhuma previsão foi criada nem salva no histórico.`} />
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message="Lote não registrado" description={batch.error} />
         )}
         {latest ? (
           <>
@@ -961,7 +960,6 @@ function RunSummary({ run }) {
   );
 }
 
-// Retorno da API e entradas sorteadas lado a lado, na ordem em que o lote foi enviado.
 function BatchTable({ run, loading }) {
   const columns = [
     { title: "CustomerID", dataIndex: "CustomerID", fixed: "left", width: 110 },
@@ -1068,7 +1066,7 @@ function QueueView({ apiState, batch, onNavigate }) {
         type="warning"
         showIcon
         message="Fila de demonstração"
-        description="Os clientes são sintéticos, gerados no navegador e pontuados pela API real. Não há integração com CRM: nenhum contato é registrado e nenhuma oferta é disparada."
+        description="Clientes gerados pelo simulador e pontuados pela API. Não há integração com CRM, então nenhum contato ou oferta é registrado."
       />
       <StatRow
         items={[
@@ -1111,7 +1109,7 @@ function QueueView({ apiState, batch, onNavigate }) {
               column={1}
               items={[
                 { key: "high", label: <PriorityTag priority="high" />, children: "Top 10% do lote pela probabilidade, com no mínimo um cliente. É uma posição relativa: em um lote de 5, só o primeiro." },
-                { key: "medium", label: <PriorityTag priority="medium" />, children: `Acima do corte da API (${threshold}), fora do top 10%. O corte é a configuração atual da API, não um critério validado pelo negócio.` },
+                { key: "medium", label: <PriorityTag priority="medium" />, children: `Acima do corte da API (${threshold}), fora do top 10%. O corte ainda não foi validado com o negócio.` },
                 { key: "low", label: <PriorityTag priority="low" />, children: "Abaixo do corte. Fica na lista apenas para monitoramento." },
               ]}
             />

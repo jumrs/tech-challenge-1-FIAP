@@ -327,48 +327,38 @@ Depois, a API responde em http://127.0.0.1:8000/docs, e o `curl` da seção ante
 
 ## Dashboard React para a apresentação
 
-O projeto inclui uma interface React/Vite (componentes Ant Design e gráficos Recharts) que organiza o produto em áreas operacionais e de
-governança:
+Interface em React/Vite (Ant Design e Recharts) usada na apresentação. Detalhes das telas, roteiro e
+critérios de aceite em [`docs/frontend-demonstracao.md`](docs/frontend-demonstracao.md).
 
-A descrição da contribuição do frontend, das telas, do roteiro de apresentação e dos critérios de
-aceite está em [`docs/frontend-demonstracao.md`](docs/frontend-demonstracao.md).
+Gere o modelo e suba a API:
+
+```powershell
+uv run python -m churn.main
+uv run uvicorn churn.api:app --reload
+```
+
+Em outro terminal:
 
 ```powershell
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```
 
-Abra http://localhost:5173. O dashboard contém:
+Abra http://localhost:5173. O Vite redireciona `/api/*` para `http://127.0.0.1:8000`.
 
-- **Visão geral:** pergunta de negócio, base, resultados no teste e consulta do cliente de exemplo;
-- **Dados e EDA:** qualidade, ausências, distribuição do alvo e decisões de tratamento;
-- **Modelos e métricas:** comparação por validação cruzada e avaliação no teste reservado;
-- **API e inferência:** chamada ao `/predict` e simulador de lote, que gera clientes sintéticos com
-  valores aleatórios, envia ao `/predict/batch` e mostra a entrada gerada ao lado do retorno da API;
-- **Fila de retenção:** clientes do lote selecionado ordenados por `churn_probability`, com
-  classificação, prioridade, status e próximo passo;
-- **Base de lotes:** consulta dos lotes executados neste navegador, com busca, filtros, detalhe por
-  cliente e exportação em CSV (histórico local, sem banco compartilhado);
-- **Controles de produto:** CRM, autenticação, histórico de contato, monitoramento, validação temporal
-  e teste incremental aparecem como pendências explícitas; não são apresentados como
-  funcionalidades implementadas.
+Telas:
 
-Cada valor exibido indica a origem: resultado documentado (notebook e relatórios do pipeline),
-retorno da API ou dado sintético de demonstração.
+- Visão geral: pergunta de negócio, números da base e do teste e consulta do cliente de exemplo;
+- Dados e EDA: qualidade da base, distribuição do alvo e tratamento;
+- Modelos e métricas: validação cruzada e teste reservado;
+- API e inferência: `/predict` e simulador de lote, que gera clientes sintéticos e mostra a
+  previsão da API ao lado dos valores gerados;
+- Fila de retenção: clientes do lote ordenados por `churn_probability`, com prioridade e próximo
+  passo;
+- Base de lotes: consulta dos lotes executados, com filtros, detalhe e exportação em CSV. O
+  histórico fica no navegador.
 
-Para demonstrar a inferência pela API, mantenha a API em outro terminal:
-
-```powershell
-uv run uvicorn churn.api:app --reload
-```
-
-O Vite encaminha as chamadas `/api/*` para `http://127.0.0.1:8000`. Assim, o botão de inferência
-consulta o endpoint real `/predict` sem configuração manual de CORS.
-Antes da demonstração, gere os artefatos:
-
-```powershell
-uv run python -m churn.main
-```
+Cada painel indica se o valor vem dos relatórios do projeto, da API ou do simulador.
 
 ### O que falta para uma implantação comercial
 
