@@ -1,0 +1,83 @@
+body {
+  margin: 0;
+  background: #f5f5f5;
+}
+
+.app-layout {
+  min-height: 100vh;
+}
+
+.app-sider {
+  border-right: 1px solid #f0f0f0;
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+}
+
+.sider-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 72px;
+  padding: 0 24px;
+  line-height: 1.4;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 8px;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 72px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.app-content {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.app-footer {
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.page-header,
+.section {
+  margin-bottom: 16px;
+}
+
+.code-block {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.row-high > td:first-child {
+  box-shadow: inset 3px 0 0 #ff4d4f;
+}
+
+@media (max-width: 991px) {
+  .app-header,
+  .app-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

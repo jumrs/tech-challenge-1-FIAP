@@ -175,3 +175,7 @@ pyrightconfig.json
 mlflow.db
 mlruns/
 mlartifacts/
+
+# Artefatos locais do frontend
+frontend/node_modules/
+frontend/dist/
