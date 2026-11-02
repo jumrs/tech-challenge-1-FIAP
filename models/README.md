@@ -1,15 +1,15 @@
 # Modelos
 
-Modelos treinados, salvos com `joblib`. Cada arquivo é um `Pipeline` do Scikit-Learn **completo**:
-inclui o feature engineering e o pré-processamento, então recebe as colunas do CSV bruto (sem
-`Churn`) e devolve a probabilidade de churn.
+Modelos treinados, salvos com `joblib`. Cada arquivo inclui o feature engineering e o
+pré-processamento, então recebe as colunas do CSV bruto (sem `Churn`) e devolve a probabilidade de
+churn.
 
 ## Artefatos
 
 | Arquivo | Gerado por | Conteúdo |
 |---|---|---|
 | `baseline_logreg.joblib` | `uv run python -m churn.main` ou `uv run python -m churn.baseline` | Regressão Logística (`class_weight='balanced'`), o baseline |
-| `champion.joblib` | `uv run python -m churn.main` ou `uv run python -m churn.compare_models` | Modelo campeão da Etapa 2 (hoje o LightGBM sem seleção de features), treinado em todo o conjunto de treino |
+| `champion.joblib` | `uv run python -m churn.main` ou `uv run python -m churn.compare_models` | Modelo campeão da Etapa 2 (hoje o LightGBM sem seleção de features), com os hiperparâmetros do tuning, probabilidades calibradas e corte escolhido por CV (`best_threshold_`), treinado em todo o conjunto de treino |
 
 O `champion.joblib` também pode ser gerado para um modelo específico:
 
@@ -28,6 +28,7 @@ import pandas as pd
 model = joblib.load("models/champion.joblib")
 clientes = pd.read_csv("data/raw/churn.csv").drop(columns=["Churn"]).head(5)
 probabilidade_churn = model.predict_proba(clientes)[:, 1]
+churn_previsto = model.predict(clientes)  # usa o corte salvo no modelo (model.best_threshold_)
 ```
 
 ## Observações

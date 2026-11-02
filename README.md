@@ -1,7 +1,45 @@
 # Predição de Churn em Telecom — Tech Challenge Fase 1 (FIAP)
 
-Pipeline preditivo de churn, da análise exploratória ao modelo campeão, construído com
-Scikit-Learn em uma arquitetura modular e rastreado com MLflow.
+Pipeline preditivo de churn, da análise exploratória ao modelo servido por API, construído com
+Scikit-Learn em uma arquitetura modular, rastreado com MLflow e servido com FastAPI.
+
+**Resultado:** LightGBM com AUC-ROC de **0,684** no teste, contra 0,647 do baseline de Regressão
+Logística. Abordando os 10% de clientes de maior risco, **55,8%** cancelariam, contra 28,8% numa
+seleção aleatória (lift de 1,94×).
+
+## Início rápido: rodar a API localmente
+
+O modelo treinado (`models/champion.joblib`) já vem no repositório, então a API sobe sem treinar
+nada. Requisitos: [Git](https://git-scm.com/downloads) e [uv](https://docs.astral.sh/uv/)
+(instalação na seção [Setup](#setup)).
+
+```bash
+git clone https://github.com/jumrs/tech-challenge-1-FIAP.git
+cd tech-challenge-1-FIAP
+uv sync                                  # instala o Python 3.13 e as dependências (ou: make setup)
+uv run uvicorn churn.api:app --reload    # sobe a API (ou: make run)
+```
+
+Abra http://127.0.0.1:8000/docs. No `POST /predict`, clique em **Try it out** e depois em
+**Execute**: o exemplo de cliente já vem preenchido. Para conferir pelo terminal:
+
+```bash
+curl http://127.0.0.1:8000/health
+# {"status":"ok","model_loaded":true,"model":"LGBMClassifier"}
+```
+
+Para rodar os testes: `uv run pytest`. Para treinar tudo de novo (cerca de 4 min):
+`uv run python -m churn.main`.
+
+## Entregáveis
+
+| Etapa do Tech Challenge | Onde está |
+|---|---|
+| 1. ML Canvas, EDA, métricas e baseline | [`docs/ml_canvas.md`](docs/ml_canvas.md), [`notebooks/tech_challenge_1_FIAP.ipynb`](notebooks/tech_challenge_1_FIAP.ipynb), [`src/churn/baseline.py`](src/churn/baseline.py) |
+| 2. Random Forest, MLP, validação cruzada, comparação e modelo salvo | [`docs/reports/model_comparison.md`](docs/reports/model_comparison.md), [`docs/reports/test_evaluation.md`](docs/reports/test_evaluation.md), [`models/champion.joblib`](models/), experimentos no MLflow |
+| 3. Código em `src/`, testes e API (`/health`, `/predict`) | [`src/churn/`](src/churn/), [`tests/`](tests/) (25 testes), [`src/churn/api.py`](src/churn/api.py) |
+| 4. Model Card, README e vídeo STAR | [`docs/model_card.md`](docs/model_card.md), este README, vídeo: `<link do vídeo>` |
+| Extras | [Docker](#docker), [arquitetura de deploy](docs/deploy_architecture.md), [dashboard](#dashboard-react-para-a-apresentação), [`Makefile`](Makefile), lint com ruff |
 
 ## Problema de negócio
 
@@ -24,8 +62,8 @@ mais clientes que efetivamente cancelariam do que uma seleção aleatória?
 
 O projeto cobre a seleção de uma base histórica, a comparação de classificadores binários, a
 persistência do pipeline vencedor e uma API local para inferência. Não cobre campanha real,
-experimento de retenção, calibragem operacional de probabilidades, monitoramento em produção ou
-integração com CRM.
+experimento de retenção, validação das probabilidades com dados de produção, monitoramento em
+produção ou integração com CRM.
 
 ## Dataset
 
@@ -58,9 +96,14 @@ a coluna e o valor com problema.
 
 ```text
 ├── data/raw/churn.csv          # dataset bruto (versionado)
-├── docs/reports/               # comparação dos modelos (CV) e avaliação final no teste (gerados no treino)
-├── models/                     # modelos treinados (.joblib)
-├── notebooks/                  # EDA, baseline e modelagem (experimentação)
+├── docs/
+│   ├── deploy_architecture.md  # arquitetura de deploy (lote + tempo real) e proposta em nuvem
+│   ├── ml_canvas.md            # ML Canvas: problema, decisões, impacto e monitoramento
+│   ├── model_card.md           # Model Card: desempenho, limitações e vieses
+│   └── reports/                # comparação dos modelos (CV) e avaliação final no teste
+├── models/                     # modelos treinados (.joblib, versionados)
+├── notebooks/
+│   └── tech_challenge_1_FIAP.ipynb  # EDA, baseline, modelagem, tuning e calibração
 ├── frontend/                   # dashboard React/Vite para a demonstração
 │   ├── src/main.jsx            # telas, gráficos e integração com a API
 │   ├── src/styles.css          # identidade visual responsiva
@@ -74,7 +117,7 @@ a coluna e o valor com problema.
 │   ├── data.py                 # leitura, limpeza e divisão treino/teste
 │   ├── features.py             # feature engineering e pré-processamento (sklearn)
 │   ├── metrics.py              # métricas técnicas e de negócio
-│   ├── model.py                # modelos da Etapa 2 e seletor de features
+│   ├── model.py                # modelos da Etapa 2, seletor de features e campeão calibrado
 │   ├── baseline.py             # Dummy + Regressão Logística
 │   ├── compare_models.py       # comparação por validação cruzada e escolha do campeão
 │   ├── train.py                # treino e registro do modelo campeão
@@ -83,9 +126,10 @@ a coluna e o valor com problema.
 │   └── api.py                  # API FastAPI (/health, /predict, /predict/batch)
 ├── tests/                      # testes unitários (pytest)
 ├── Dockerfile                  # imagem da API (multi-stage, usuário sem privilégios)
+├── Makefile                    # atalhos: setup, train, test, check, run, docker-build...
 ├── .dockerignore               # arquivos fora do contexto do build
 ├── .python-version             # versão do Python (3.13)
-├── pyproject.toml              # dependências e configuração do pytest
+├── pyproject.toml              # dependências e configuração do pytest e do ruff
 └── uv.lock                     # versões exatas das dependências
 ```
 
@@ -113,7 +157,7 @@ Feche e reabra o terminal depois da instalação, para o comando `uv` ficar disp
 ### 2. Clonar o repositório
 
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/jumrs/tech-challenge-1-FIAP.git
 cd tech-challenge-1-FIAP
 ```
 
@@ -155,6 +199,8 @@ A ativação é opcional: todos os comandos deste README usam `uv run`, que já 
 
 ### 6. Instalar as dependências
 
+> No Linux, macOS ou WSL, os passos 3 a 6 se resumem a `make setup`.
+
 ```bash
 uv sync
 ```
@@ -165,8 +211,8 @@ fonte de dependências, divididas em três partes (o `uv sync` instala todas):
 | Parte | Pacotes | Para quê |
 |---|---|---|
 | Principal | scikit-learn, LightGBM, XGBoost (`xgboost-cpu`, sem as bibliotecas de GPU), pandas, Pydantic, FastAPI, uvicorn, loguru | Pipeline do modelo e API (é o que vai para a imagem Docker) |
-| Grupo `training` | MLflow, KaggleHub, matplotlib, seaborn | Treino, rastreamento dos experimentos, download dos dados e notebook |
-| Grupo `dev` | pytest, httpx2 | Testes |
+| Grupo `training` | MLflow, KaggleHub, Optuna, matplotlib, seaborn, ipykernel | Treino, tuning, rastreamento dos experimentos, download dos dados e notebook |
+| Grupo `dev` | pytest, httpx2, ruff | Testes, lint e formatação |
 
 ### 7. Verificar a instalação
 
@@ -180,6 +226,24 @@ uv run python -c "import churn; print('ok')"  # ok
 
 Todos os comandos rodam a partir da raiz do projeto.
 
+### Atalhos com `make`
+
+O `Makefile` reúne os comandos mais usados (`make help` lista todos). No Windows sem `make`, use os
+comandos `uv run` das seções abaixo, que são os mesmos.
+
+| Comando | O que faz |
+|---|---|
+| `make setup` | Instala o Python 3.13 e as dependências do `uv.lock` |
+| `make train` | Fluxo completo: baseline, comparação, campeão e avaliação no teste |
+| `make test` | Testes (pytest) |
+| `make check` | Lint e formatação (ruff) + testes. Rodar antes de cada commit |
+| `make format` | Corrige o lint e formata o código |
+| `make run` | Sobe a API em http://127.0.0.1:8000/docs |
+| `make notebook` | Reexecuta o notebook salvando as saídas |
+| `make mlflow` | Abre o MLflow em http://127.0.0.1:5000 |
+| `make frontend` | Sobe o dashboard em http://localhost:5173 |
+| `make docker-build` / `make docker-run` | Gera e roda a imagem da API |
+
 ### Fluxo de execução
 
 ```bash
@@ -191,7 +255,8 @@ Executa as etapas em sequência, com logs e a duração de cada uma:
 1. **Dados:** usa o `data/raw/churn.csv` existente ou baixa o dataset se o arquivo não existir.
 2. **Baseline:** Dummy e Regressão Logística.
 3. **Comparação:** 4 modelos × com/sem seleção de features, por validação cruzada.
-4. **Campeão:** treina o melhor modelo e salva em `models/champion.joblib`.
+4. **Campeão:** aplica os hiperparâmetros do tuning, calibra as probabilidades, escolhe o corte
+   de classificação por CV e salva em `models/champion.joblib`.
 5. **Avaliação final:** compara campeão e baseline, uma única vez, no conjunto de teste.
 
 Opções:
@@ -221,28 +286,26 @@ Todos aceitam `--data <arquivo.csv>` para usar outro CSV com o mesmo layout.
 | `churn.train` | `models/champion.joblib` e run `CAMPEAO \| <modelo>` no MLflow |
 | `churn.evaluate` | `docs/reports/test_evaluation.{csv,md}` e run `AVALIACAO FINAL \| teste` no MLflow (exige os dois modelos salvos) |
 
-### Do zero até o modelo campeão
+### Do zero até a API com um modelo treinado por você
 
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/jumrs/tech-challenge-1-FIAP.git
 cd tech-challenge-1-FIAP
-uv python install 3.13
-uv venv --python 3.13
-uv sync
-uv run pytest
-uv run python -m churn.main
-uv run uvicorn churn.api:app --reload
-npm --prefix frontend install
-npm --prefix frontend run dev
+uv sync                                 # make setup
+uv run pytest                           # make test
+uv run python -m churn.main             # make train (sobrescreve models/*.joblib)
+uv run uvicorn churn.api:app --reload   # make run
 ```
+
+Com a seed fixa, o treino reproduz os mesmos modelos e os mesmos números deste README.
 
 ## API de inferência (FastAPI)
 
-A API serve o modelo campeão (`models/champion.joblib`), carregado uma única vez na subida. Gere
-o modelo antes com `uv run python -m churn.main`.
+A API serve o modelo campeão (`models/champion.joblib`, versionado no repositório), carregado uma
+única vez na subida.
 
 ```bash
-uv run uvicorn churn.api:app --reload
+uv run uvicorn churn.api:app --reload   # ou: make run
 ```
 
 - Documentação interativa (Swagger): http://127.0.0.1:8000/docs, com um exemplo de cliente pronto
@@ -293,13 +356,14 @@ curl -X POST http://127.0.0.1:8000/predict \
 ```
 
 ```json
-{"CustomerID": 3000002, "churn_probability": 0.6964, "churn_prediction": 1, "threshold": 0.5}
+{"CustomerID": 3000002, "churn_probability": 0.4483, "churn_prediction": 1, "threshold": 0.2698}
 ```
 
-- `churn_probability`: propensão de churn, de 0 a 1. Use-a para **ordenar** os clientes da
-  campanha de retenção.
-- `churn_prediction`: 1 quando a probabilidade é maior ou igual ao `threshold` (0,5, definido em
-  `PREDICTION_THRESHOLD` no `config.py`).
+- `churn_probability`: probabilidade **calibrada** de churn, de 0 a 1 (clientes com 0,45 cancelam
+  em cerca de 45% dos casos). Use-a para **ordenar** os clientes da campanha de retenção.
+- `churn_prediction`: 1 quando a probabilidade é maior ou igual ao `threshold`. O corte (0,270)
+  foi escolhido por validação cruzada no treino, maximizando o F1, e fica salvo no próprio modelo.
+  Ele favorece o recall e marca cerca de metade da base; a campanha deve usar a ordem.
 - Campos que podem faltar na base (uso, `ServiceArea`, aparelho, idade) podem ser omitidos ou
   enviados como `null`: o pipeline os imputa.
 
@@ -315,32 +379,48 @@ Para várias predições: `POST /predict/batch` com `{"customers": [ {...}, {...
 
 ## Docker
 
-A imagem empacota só a API e o modelo campeão. O modelo precisa existir antes do build:
+A imagem empacota só a API e o modelo campeão (`models/champion.joblib`, já versionado; para usar
+um modelo novo, rode `make train` antes do build):
 
 ```bash
-uv run python -m churn.main          # gera models/champion.joblib
-docker build -t churn-api .
-docker run -d --name churn-api -p 8000:8000 churn-api
+docker build -t churn-api .          # ou: make docker-build
+docker run -d --name churn-api -p 8000:8000 churn-api   # ou: make docker-run
 ```
 
 Depois, a API responde em http://127.0.0.1:8000/docs, e o `curl` da seção anterior funciona igual.
+
+```bash
+docker ps                     # coluna STATUS mostra "(healthy)" quando o /health responde
+docker logs -f churn-api      # logs em JSON de cada requisição
+docker rm -f churn-api        # para e remove o container
+```
+
+Como a imagem é construída:
+- **Multi-stage:** um estágio instala as dependências com o uv (`uv.lock`, `--frozen`); a imagem
+  final recebe só o Python, o `.venv` e o `champion.joblib`, sem uv, código-fonte, dados, testes
+  ou notebooks.
+- **Só dependências da API:** os grupos `training` e `dev` ficam de fora (`--no-default-groups`).
+- **Cache de camadas:** as dependências são instaladas antes de copiar o código, então mudar o
+  código não reinstala os pacotes.
+- **Segurança:** a API roda com o usuário sem privilégios `appuser`.
+- **Healthcheck:** o Docker consulta o `/health` a cada 30 s, usando o próprio Python (sem `curl`).
+- `libgomp1` é instalada porque o LightGBM precisa dela em tempo de execução.
 
 ## Dashboard React para a apresentação
 
 Interface em React/Vite (Ant Design e Recharts) usada na apresentação. Detalhes das telas, roteiro e
 critérios de aceite em [`docs/frontend-demonstracao.md`](docs/frontend-demonstracao.md).
 
-Gere o modelo e suba a API:
+Requer [Node.js](https://nodejs.org/) 18 ou mais novo. Suba a API:
 
-```powershell
-uv run python -m churn.main
-uv run uvicorn churn.api:app --reload
+```bash
+uv run uvicorn churn.api:app --reload   # make run
 ```
 
 Em outro terminal:
 
-```powershell
-npm --prefix frontend install
+```bash
+npm --prefix frontend install           # make frontend (instala e sobe)
 npm --prefix frontend run dev
 ```
 
@@ -374,22 +454,15 @@ desta Fase 1:
 Esses itens ficam como evolução do produto. A interface os exibe como pendências para não confundir
 um protótipo demonstrável com um sistema operacional já integrado.
 
-```bash
-docker ps                     # coluna STATUS mostra "(healthy)" quando o /health responde
-docker logs -f churn-api      # logs em JSON de cada requisição
-docker rm -f churn-api        # para e remove o container
-```
+## Documentação
 
-Como a imagem é construída:
-- **Multi-stage:** um estágio instala as dependências com o uv (`uv.lock`, `--frozen`); a imagem
-  final recebe só o Python, o `.venv` e o `champion.joblib`, sem uv, código-fonte, dados, testes
-  ou notebooks.
-- **Só dependências da API:** os grupos `training` e `dev` ficam de fora (`--no-default-groups`).
-- **Cache de camadas:** as dependências são instaladas antes de copiar o código, então mudar o
-  código não reinstala os pacotes.
-- **Segurança:** a API roda com o usuário sem privilégios `appuser`.
-- **Healthcheck:** o Docker consulta o `/health` a cada 30 s, usando o próprio Python (sem `curl`).
-- `libgomp1` é instalada porque o LightGBM precisa dela em tempo de execução.
+- [ML Canvas](docs/ml_canvas.md): tarefa de predição, decisões, proposta de valor, simulação de
+  impacto e monitoramento.
+- [Model Card](docs/model_card.md): desempenho, calibração, limitações e análise de vieses por
+  subgrupo.
+- [Arquitetura de deploy](docs/deploy_architecture.md): lote quinzenal + API em tempo real,
+  latência medida e proposta de deploy em nuvem.
+- [Frontend de demonstração](docs/frontend-demonstracao.md): telas e roteiro da apresentação.
 
 ## Rastreamento dos experimentos (MLflow)
 
@@ -406,19 +479,21 @@ Abra http://127.0.0.1:5000 e filtre os runs pela tag `etapa`:
 |---|---|---|---|---|
 | `baseline` | `baseline_dummy_most_frequent`, `baseline_logistic_regression` | `model_type`, `cv_folds` | `cv_<métrica>_mean` e `cv_<métrica>_std` (5 folds); `test_<métrica>` | Modelo `.joblib`, matriz de confusão e `classification_report` da CV, coeficientes padronizados |
 | `comparacao_cv` | `<modelo> \| selecao=sim/nao` (8 runs) + `Regressao Logistica (baseline) \| selecao=nao` como referência | `modelo`, `selecao_features` | `cv_<métrica>_mean`, `cv_<métrica>_std`, `fit_time_mean_s` | — |
-| `campeao` | `CAMPEAO \| <modelo>` | `modelo`, `selecao_features`, `threshold` | `n_features` | Modelo MLflow (`mlflow.sklearn`), lista de features mantidas e removidas |
-| `avaliacao_final` | `AVALIACAO FINAL \| teste` | `campeao`, `threshold`, premissas de negócio | `test_champion_*` e `test_baseline_*` (métricas técnicas, top 10%/20%, custo), `test_auc_difference` com `test_ci_low`/`test_ci_high` | — |
+| `campeao` | `CAMPEAO \| <modelo>` | `modelo`, `selecao_features`, `calibracao`, hiperparâmetros do tuning | `cv_roc_auc_mean`, `corte`, `cv_f1_no_corte`, `n_features` | Modelo MLflow (`mlflow.sklearn`), lista de features mantidas e removidas |
+| `avaliacao_final` | `AVALIACAO FINAL \| teste` | `campeao`, `threshold_campeao`, `threshold_baseline`, premissas de negócio | `test_champion_*` e `test_baseline_*` (métricas técnicas, top 10%/20%, custo), `test_auc_difference` com `test_ci_low`/`test_ci_high` | — |
 
 Onde `<métrica>` é `roc_auc`, `pr_auc`, `recall`, `precision`, `f1` ou `accuracy`. Para encontrar
 o campeão, ordene os runs `comparacao_cv` por `cv_roc_auc_mean`.
 
-## Testes
+## Testes e qualidade de código
 
 ```bash
-uv run pytest
+uv run pytest                 # ou: make test
+uv run ruff check .           # lint
+uv run ruff format --check .  # formatação (make check roda os três)
 ```
 
-Os 23 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
+Os 25 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
 
 | Arquivo | Cobre |
 |---|---|
@@ -426,9 +501,9 @@ Os 23 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
 | `test_data.py` | Arquivo inexistente, limpeza dos registros inconsistentes, alvo 0/1 e divisão 80/20 estratificada |
 | `test_features.py` | Codificações, colunas removidas, fase do contrato, zeros que indicam ausência e pré-processamento sem NaN |
 | `test_metrics.py` | Efeito do ponto de corte, métricas de custo, top X% e bootstrap da diferença de AUC |
-| `test_model.py` | Os 4 modelos com seleção de features e a escolha do campeão (o baseline não concorre) |
+| `test_model.py` | Os 4 modelos com seleção de features, a escolha do campeão (o baseline não concorre) e o campeão calibrado com corte próprio |
 | `test_evaluate.py` | Tabela da avaliação final (métricas, top X%, custo, matriz de confusão) |
-| `test_api.py` | `/health`, `/predict` (sucesso e entrada inválida), `/predict/batch` e o modo sem modelo (503) |
+| `test_api.py` | `/health`, `/predict` (sucesso e entrada inválida), `/predict/batch`, o modo sem modelo (503) e o uso do corte do campeão |
 
 ## Metodologia
 
@@ -452,15 +527,23 @@ Os 23 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
    - Etapa 2: Random Forest, LightGBM, XGBoost e MLP (`MLPClassifier`), cada um com e sem seleção
      de features (`SelectFromModel` com LightGBM).
 7. **Campeão:** o maior AUC-ROC médio na validação cruzada.
-8. **Avaliação final** (`evaluate.py`): o campeão e o baseline salvos são avaliados **uma única
-   vez** no teste, com corte de 0,5, desempenho nos 10% e 20% de clientes de maior risco, métricas
-   de custo e intervalo de confiança de 95% (bootstrap pareado) para a diferença de AUC.
+8. **Ajuste do campeão** (`train.py`):
+   - hiperparâmetros do tuning bayesiano (Optuna, 25 tentativas, feito no notebook);
+   - calibração sigmoide (`CalibratedClassifierCV`), porque o `class_weight` infla as
+     probabilidades (média de 0,44 para um churn real de 0,29);
+   - corte de classificação escolhido por CV no treino, maximizando o F1
+     (`TunedThresholdClassifierCV`).
+9. **Avaliação final** (`evaluate.py`): o campeão e o baseline salvos são avaliados **uma única
+   vez** no teste, cada um no próprio corte (campeão 0,270; baseline 0,5), com desempenho nos 10%
+   e 20% de clientes de maior risco, métricas de custo e intervalo de confiança de 95% (bootstrap
+   pareado) para a diferença de AUC.
 
 ## Boas práticas implementadas
 
 **Reprodutibilidade**
 - Seed única (`RANDOM_SEED = 42` em `config.py`), usada na divisão treino/teste, nos folds da
-  validação cruzada, nos modelos e no seletor de features.
+  validação cruzada, nos modelos, no seletor de features e no Optuna.
+- Notebook e código chegam ao mesmo resultado: AUC-ROC de 0,684 no teste nos dois.
 - Dependências com versões exatas no `uv.lock` e Python fixado em `.python-version`.
 - Dataset versionado e fluxo inteiro reproduzível com um comando (`churn.main`).
 
@@ -488,7 +571,7 @@ Os 23 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
   e mede a latência de cada requisição.
 - Logs estruturados em JSON (loguru).
 - Rastreamento de parâmetros, métricas e artefatos no MLflow.
-- Testes automatizados com pytest.
+- Testes automatizados com pytest e lint/formatação com ruff (`make check`).
 
 ## Resultados
 
@@ -496,7 +579,8 @@ AUC-ROC médio na validação cruzada (5 folds, conjunto de treino):
 
 | Modelo | Seleção de features | AUC-ROC |
 |---|---|---|
-| **LightGBM (campeão)** | não | **0,678 ± 0,003** |
+| **LightGBM tunado + calibrado (final)** | não | **0,686 ± 0,004** |
+| LightGBM (campeão da comparação) | não | 0,678 ± 0,003 |
 | LightGBM | sim | 0,676 ± 0,003 |
 | Random Forest | sim | 0,670 ± 0,002 |
 | Random Forest | não | 0,668 ± 0,002 |
@@ -507,36 +591,43 @@ AUC-ROC médio na validação cruzada (5 folds, conjunto de treino):
 | MLP | não | 0,646 ± 0,004 |
 | Dummy | — | 0,500 |
 
-A tabela completa, com todas as métricas, é gerada em `docs/reports/model_comparison.md`. As
+O campeão é escolhido com os parâmetros padrão; depois, só ele recebe o tuning e a calibração. A
+tabela completa, com todas as métricas, é gerada em `docs/reports/model_comparison.md`. As
 variáveis que mais aumentam o risco na Regressão Logística são `Contract_EndWindow` (fim da
 fidelidade), `UniqueSubs` e `CurrentEquipmentDays` (aparelho antigo).
 
 ### Avaliação final no teste (campeão × baseline)
 
-10.209 clientes nunca vistos no treino (churn de 28,8%), com corte de 0,5:
+10.209 clientes nunca vistos no treino (churn de 28,8%). Cada modelo usa o próprio corte (campeão
+0,270, escolhido por CV; baseline 0,5):
 
 | Métrica | Regressão Logística (baseline) | LightGBM (campeão) | Ganho |
 |---|---|---|---|
-| **AUC-ROC** | 0,647 | **0,677** | +0,030 |
-| PR-AUC | 0,412 | **0,454** | +0,043 |
-| Precisão | 0,380 | **0,404** | +0,023 |
-| Recall | **0,650** | 0,631 | −0,019 |
-| F1 | 0,480 | **0,492** | +0,012 |
-| Precisão nos 10% de maior risco | 0,486 | **0,545** | +0,059 |
-| Lift nos 10% de maior risco | 1,69 | **1,89** | +0,20 |
-| Churn alcançado abordando 20% da base | 30,6% | **33,7%** | +3,1 p.p. |
+| **AUC-ROC** | 0,647 | **0,684** | +0,037 |
+| PR-AUC | 0,412 | **0,463** | +0,051 |
+| Precisão | 0,380 | **0,384** | +0,004 |
+| Recall | 0,650 | **0,712** | +0,062 |
+| F1 | 0,480 | **0,499** | +0,020 |
+| Precisão nos 10% de maior risco | 0,486 | **0,558** | +0,073 |
+| Lift nos 10% de maior risco | 1,69 | **1,94** | +0,25 |
+| Churn alcançado abordando 20% da base | 30,6% | **34,9%** | +4,3 p.p. |
+| Brier (calibração, menor é melhor) | 0,234 | **0,187** | −0,047 |
+| Probabilidade média (churn real 0,288) | 0,485 | **0,290** | — |
 
-- **Comparação com o baseline:** a diferença de AUC no teste foi de +0,030, com intervalo de
-  confiança de 95% entre **+0,022 e +0,038** no bootstrap pareado. Nesta divisão, o AUC do teste
-  (0,677) ficou próximo do AUC médio da validação cruzada (0,678); isso não substitui validação
-  temporal ou acompanhamento em produção.
-- **Na campanha de retenção:** abordando os 10% de clientes de maior risco, 54,5% deles realmente
-  cancelariam, contra 28,8% na seleção aleatória. O lift observado foi de 1,89x.
-- **No corte de 0,5:** o campeão gera 376 falsos alarmes a menos, ao custo de deixar escapar 57
-  clientes que cancelariam a mais. Com as premissas ilustrativas de custo (valor do cliente 1.000,
-  30% de sucesso na retenção, custo da ação 50), o valor líquido evitado é ligeiramente maior
-  (+4.550). As premissas precisam ser validadas com a área de negócio.
+- **Comparação com o baseline:** a diferença de AUC no teste foi de +0,037, com intervalo de
+  confiança de 95% entre **+0,029 e +0,044** no bootstrap pareado. O AUC do teste (0,684) ficou
+  próximo do AUC médio da validação cruzada (0,686); isso não substitui validação temporal ou
+  acompanhamento em produção.
+- **Na campanha de retenção:** abordando os 10% de clientes de maior risco, 55,8% deles realmente
+  cancelariam, contra 28,8% na seleção aleatória. O lift observado foi de 1,94x.
+- **Probabilidades calibradas:** a média prevista (0,290) bate com a taxa real (0,288), e o mesmo
+  vale por faixa de risco. Sem a calibração, a média era 0,44.
+- **No corte:** o campeão encontra 184 clientes que cancelariam a mais que o baseline, com 239
+  falsos alarmes a mais. Com as premissas ilustrativas de custo (valor do cliente 1.000, 30% de
+  sucesso na retenção, custo da ação 50), o valor líquido evitado é maior (+34.050). As premissas
+  precisam ser validadas com a área de negócio.
 - **Limite:** um AUC de 0,68 indica poder de ordenação moderado. O modelo serve para priorizar a
-  campanha, não para decidir cliente a cliente com alta certeza.
+  campanha, não para decidir cliente a cliente com alta certeza. Limitações e vieses estão no
+  [Model Card](docs/model_card.md).
 
 A tabela completa está em `docs/reports/test_evaluation.md`.

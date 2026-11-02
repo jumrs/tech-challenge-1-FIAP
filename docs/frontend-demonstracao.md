@@ -32,13 +32,14 @@ Os gráficos completos estão no notebook.
 AUC-ROC de cada modelo na validação cruzada e comparação entre LightGBM e baseline no teste
 reservado (AUC-ROC, PR-AUC, precisão, recall e lift no top 10%).
 
-O recall do LightGBM ficou abaixo do baseline no corte de 0,5. A tela mostra isso: o ganho do
-modelo está na ordenação dos clientes.
+O ganho principal do modelo está na ordenação dos clientes. A tela também mostra o Brier, que
+mede a calibração das probabilidades.
 
 ### API e inferência
 
 Envia o cliente `3000002` para `POST /predict` e mostra `churn_probability`, `churn_prediction` e
-`threshold`. O corte de 0,5 é o valor configurado na API; ele não foi validado como regra de negócio.
+`threshold`. O corte (0,270) foi escolhido por validação cruzada no treino, maximizando o F1; ele não
+foi validado como regra de negócio.
 
 O simulador de lote gera 5, 20 ou 50 clientes e envia para `POST /predict/batch`. Cada cliente usa o
 cadastro do `3000002` com 12 variáveis sorteadas, como meses de contrato, minutos, chamadas ao
