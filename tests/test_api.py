@@ -47,6 +47,13 @@ def test_predict_rejects_invalid_payload(client):
     assert "RetentionCalls" in response.text
 
 
+def test_predict_rejects_new_customers(client):
+    response = client.post("/predict", json=EXAMPLE_CUSTOMER | {"MonthsInService": 5})
+
+    assert response.status_code == 422
+    assert "MonthsInService" in response.text
+
+
 def test_predict_batch(client):
     customers = [EXAMPLE_CUSTOMER, EXAMPLE_CUSTOMER | {"CustomerID": 1, "MonthsInService": 11}]
 

@@ -19,6 +19,9 @@ CHAMPION_MODEL_PATH = MODELS_DIR / "champion.joblib"
 # Corte padrao (baseline). O campeao usa o corte salvo no proprio modelo.
 PREDICTION_THRESHOLD = 0.5
 
+# A base de treino so tem clientes com 6 meses ou mais; a API recusa clientes mais novos.
+MIN_MONTHS_IN_SERVICE = 6
+
 # MLflow: mesmo backend e experimento usados no notebook.
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}")
 MLFLOW_EXPERIMENT = "churn-cell2cell"

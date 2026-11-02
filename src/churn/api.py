@@ -12,7 +12,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from churn.config import CHAMPION_MODEL_PATH
+from churn.config import CHAMPION_MODEL_PATH, MIN_MONTHS_IN_SERVICE
 from churn.logger import get_logger
 from churn.model import clf_name, get_threshold
 from churn.schema import CustomerFeatures
@@ -94,6 +94,10 @@ class CustomerPayload(CustomerFeatures):
     model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [EXAMPLE_CUSTOMER]})
 
     CustomerID: int | None = Field(default=None, description="Opcional, devolvido na resposta.")
+    MonthsInService: int = Field(
+        ge=MIN_MONTHS_IN_SERVICE,
+        description="Meses de servico. O modelo foi treinado com clientes de 6 meses ou mais.",
+    )
 
 
 class BatchPredictionRequest(BaseModel):
