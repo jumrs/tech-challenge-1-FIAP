@@ -7,7 +7,12 @@
 > Baseado no [Machine Learning Canvas](https://www.ownml.co/) v1.2, de Louis Dorard (OWNML),
 > licenciado sob CC BY-SA 4.0. Os números vêm do dataset Cell2Cell e da avaliação no conjunto de
 > teste (`docs/reports/test_evaluation.md`). Os valores de negócio são premissas que precisam de
-> validação da operadora.
+> validação da operadora. Valores em **US$**: o Cell2Cell é de uma operadora dos EUA.
+>
+> **Implementado** nesta Fase 1: modelo, API (`/predict` e `/predict/batch`), validação dos dados,
+> recusa de clientes com menos de 6 meses e logs de latência. **Proposta** (desenho para a
+> operação, ainda não implementado): job quinzenal, grupo de controle, cálculo de PSI, gatilhos de
+> retreino e painéis de monitoramento. Os itens propostos estão marcados com *(proposta)*.
 
 ---
 
@@ -32,7 +37,7 @@
 - **Prioridade:** clientes perto do fim da fidelidade (meses 11 e 12), com churn de **42,7%**
   contra 28,8% na base. A abordagem deve acontecer **antes do 11º mês**. O modelo já recebe essa
   informação pela variável `Contract_EndWindow`.
-- **Grupo de controle:** **10% dos clientes selecionados** ficam sem abordagem, sorteados a cada
+- **Grupo de controle** *(proposta)*: **10% dos clientes selecionados** ficam sem abordagem, sorteados a cada
   ciclo, para medir o efeito real da oferta. Sem esse grupo não dá para separar o efeito da
   campanha do efeito do modelo.
 - **Atendimento individual:** o atendente consulta o risco do cliente pela API (`POST /predict`).
@@ -84,17 +89,17 @@
 
 ## 6. Impact Simulation (simulação de impacto)
 
-**Custos por cliente** (mediana de `MonthlyRevenue` = R$ 48,46):
+**Custos por cliente** (mediana de `MonthlyRevenue` = US$ 48,46):
 
 | Situação | Impacto |
 |---|---|
-| Falso negativo (cliente sai sem abordagem) | perda de **R$ 581,52** (12 meses de receita) |
-| Falso positivo (desconto desnecessário) | custo de **R$ 29,08** (20% × 3 meses) |
-| Verdadeiro positivo | custo do desconto (R$ 29,08), com o cliente retido em ~35% dos casos (ganho esperado de 0,35 × 581,52 = R$ 203,53) |
+| Falso negativo (cliente sai sem abordagem) | perda de **US$ 581,52** (12 meses de receita) |
+| Falso positivo (desconto desnecessário) | custo de **US$ 29,08** (20% × 3 meses) |
+| Verdadeiro positivo | custo do desconto (US$ 29,08), com o cliente retido em ~35% dos casos (ganho esperado de 0,35 × 581,52 = US$ 203,53) |
 | Verdadeiro negativo | sem custo |
 
 **Quando o modelo se paga:** abordar um cliente vale a pena se
-`P(churn) × 0,35 × R$ 581,52 > R$ 29,08`, isto é, se a **precisão da lista for maior que 14,3%**.
+`P(churn) × 0,35 × US$ 581,52 > US$ 29,08`, isto é, se a **precisão da lista for maior que 14,3%**.
 
 **Resultado no teste** (10.209 clientes nunca vistos no treino):
 
@@ -107,6 +112,11 @@ A precisão fica bem acima do ponto de equilíbrio de 14,3%. Como até a seleç�
 desse ponto (28,8%), **o ganho do modelo deve ser medido contra a seleção aleatória**, e não
 contra "não fazer nada".
 
+**Valor líquido no teste** (estas mesmas premissas, `evaluate.py`): abordando os clientes acima
+do corte, o campeão evita **US$ 268.059** líquidos contra US$ 242.910 do baseline, um ganho de
+**US$ 25.149** em 10.209 clientes. O valor bruto depende da taxa de sucesso de 35%, que só o grupo de
+controle vai confirmar.
+
 **Critério para colocar em produção:** AUC-ROC no teste maior que o do baseline de Regressão
 Logística, com intervalo de confiança que não inclua zero. Foi atingido: +0,037, IC 95% de
 +0,029 a +0,044.
@@ -118,7 +128,7 @@ Logística, com intervalo de confiança que não inclua zero. Foi atingido: +0,0
 - **Tempo real:** a API (`POST /predict`) atende consultas individuais.
 - **Elegibilidade:** clientes com **menos de 6 meses** de serviço não entram no processamento. No
   Cell2Cell, `MonthsInService` vai de 6 a 61, então o modelo **nunca viu** clientes mais novos e
-  não deve pontuá-los.
+  não deve pontuá-los. A API recusa esses clientes com erro 422.
 - **Prazos:** o lote precisa terminar antes do início da terceira semana operacional. A pontuação
   leva poucos minutos. Na API, a resposta deve vir em menos de 1 segundo. O header
   `X-Process-Time-ms` mede a latência de cada chamada.
@@ -140,7 +150,7 @@ Logística, com intervalo de confiança que não inclua zero. Foi atingido: +0,0
 - **Reprodutibilidade:** seed fixa (`RANDOM_SEED = 42`), versões travadas no `uv.lock` e fluxo
   completo com um comando (`uv run python -m churn.main`).
 - **Tempo de treino:** minutos em CPU.
-- **Retreino:**
+- **Retreino** *(proposta)*:
   - **Agendado:** a cada trimestre, com os rótulos dos ciclos mais recentes.
   - **Por gatilho:** antes do trimestre, se ocorrer qualquer um dos casos abaixo:
     - **data drift:** PSI (Population Stability Index) > 0,2 em alguma variável principal
@@ -178,6 +188,9 @@ as transformações. Assim, treino e inferência usam exatamente o mesmo tratame
   `CurrentEquipmentDays` (aparelho antigo) são as que mais aumentam o risco.
 
 ## 10. Monitoring (monitoramento)
+
+Hoje a API já registra latência (`X-Process-Time-ms`), status de cada requisição e erros 422 nos
+logs. O restante da tabela é *(proposta)* para a operação.
 
 | Dimensão | Frequência | O que acompanhar |
 |---|---|---|

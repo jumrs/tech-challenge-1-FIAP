@@ -37,7 +37,7 @@ Para rodar os testes: `uv run pytest`. Para treinar tudo de novo (cerca de 4 min
 |---|---|
 | 1. ML Canvas, EDA, métricas e baseline | [`docs/ml_canvas.md`](docs/ml_canvas.md), [`notebooks/tech_challenge_1_FIAP.ipynb`](notebooks/tech_challenge_1_FIAP.ipynb), [`src/churn/baseline.py`](src/churn/baseline.py) |
 | 2. Random Forest, MLP, validação cruzada, comparação e modelo salvo | [`docs/reports/model_comparison.md`](docs/reports/model_comparison.md), [`docs/reports/test_evaluation.md`](docs/reports/test_evaluation.md), [`models/champion.joblib`](models/), experimentos no MLflow |
-| 3. Código em `src/`, testes e API (`/health`, `/predict`) | [`src/churn/`](src/churn/), [`tests/`](tests/) (25 testes), [`src/churn/api.py`](src/churn/api.py) |
+| 3. Código em `src/`, testes e API (`/health`, `/predict`) | [`src/churn/`](src/churn/), [`tests/`](tests/) (26 testes), [`src/churn/api.py`](src/churn/api.py) |
 | 4. Model Card, README e vídeo STAR | [`docs/model_card.md`](docs/model_card.md), este README, vídeo: `<link do vídeo>` |
 | Extras | [Docker](#docker), [arquitetura de deploy](docs/deploy_architecture.md), [dashboard](#dashboard-react-para-a-apresentação), [`Makefile`](Makefile), lint com ruff |
 
@@ -54,9 +54,10 @@ mais clientes que efetivamente cancelariam do que uma seleção aleatória?
   risco, sem depender de um ponto de corte, e é adequada para bases desbalanceadas.
 - **Métricas complementares:** PR-AUC, Recall, Precisão e F1. A acurácia aparece só como
   referência: um modelo que sempre prevê "não cancela" acerta 71% dos casos.
-- **Métrica de negócio:** valor líquido estimado de churn evitado, calculado com premissas ilustrativas
-  de valor do cliente, sucesso da retenção e custo da ação (`cost_tradeoff_metrics` em
-  `src/churn/metrics.py`). Essas premissas ainda precisam de validação da operadora.
+- **Métrica de negócio:** valor líquido estimado de churn evitado (`cost_tradeoff_metrics` em
+  `src/churn/metrics.py`), com as premissas do [ML Canvas](docs/ml_canvas.md): cliente perdido =
+  US$ 581,52 (12 meses de receita), oferta = US$ 29,08 (20% de desconto por 3 meses) e 35% de
+  sucesso na retenção. Essas premissas ainda precisam de validação da operadora.
 
 ### Escopo e limites
 
@@ -366,6 +367,8 @@ curl -X POST http://127.0.0.1:8000/predict \
   Ele favorece o recall e marca cerca de metade da base; a campanha deve usar a ordem.
 - Campos que podem faltar na base (uso, `ServiceArea`, aparelho, idade) podem ser omitidos ou
   enviados como `null`: o pipeline os imputa.
+- Clientes com `MonthsInService` menor que 6 são recusados (422): o modelo foi treinado só com
+  clientes de 6 meses ou mais.
 
 Para várias predições: `POST /predict/batch` com `{"customers": [ {...}, {...} ]}`, que devolve
 `{"predictions": [...]}` na mesma ordem.
@@ -374,7 +377,7 @@ Para várias predições: `POST /predict/batch` com `{"customers": [ {...}, {...
 
 | Status | Quando |
 |---|---|
-| `422` | Entrada inválida, com o campo e o motivo no corpo: campo obrigatório ausente, categoria inexistente, valor negativo, regra entre colunas (ex.: `ActiveSubs > UniqueSubs`), campo desconhecido ou lote vazio ou maior que 1.000 |
+| `422` | Entrada inválida, com o campo e o motivo no corpo: campo obrigatório ausente, categoria inexistente, valor negativo, cliente com menos de 6 meses, regra entre colunas (ex.: `ActiveSubs > UniqueSubs`), campo desconhecido ou lote vazio ou maior que 1.000 |
 | `503` | Modelo não carregado (`models/champion.joblib` ausente na subida da API) |
 
 ## Docker
@@ -493,7 +496,7 @@ uv run ruff check .           # lint
 uv run ruff format --check .  # formatação (make check roda os três)
 ```
 
-Os 25 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
+Os 26 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
 
 | Arquivo | Cobre |
 |---|---|
@@ -503,7 +506,7 @@ Os 25 testes rodam em poucos segundos sobre uma amostra de `data/raw/churn.csv`:
 | `test_metrics.py` | Efeito do ponto de corte, métricas de custo, top X% e bootstrap da diferença de AUC |
 | `test_model.py` | Os 4 modelos com seleção de features, a escolha do campeão (o baseline não concorre) e o campeão calibrado com corte próprio |
 | `test_evaluate.py` | Tabela da avaliação final (métricas, top X%, custo, matriz de confusão) |
-| `test_api.py` | `/health`, `/predict` (sucesso e entrada inválida), `/predict/batch`, o modo sem modelo (503) e o uso do corte do campeão |
+| `test_api.py` | `/health`, `/predict` (sucesso, entrada inválida e cliente com menos de 6 meses), `/predict/batch`, o modo sem modelo (503) e o uso do corte do campeão |
 
 ## Metodologia
 
@@ -623,9 +626,9 @@ fidelidade), `UniqueSubs` e `CurrentEquipmentDays` (aparelho antigo).
 - **Probabilidades calibradas:** a média prevista (0,290) bate com a taxa real (0,288), e o mesmo
   vale por faixa de risco. Sem a calibração, a média era 0,44.
 - **No corte:** o campeão encontra 184 clientes que cancelariam a mais que o baseline, com 239
-  falsos alarmes a mais. Com as premissas ilustrativas de custo (valor do cliente 1.000, 30% de
-  sucesso na retenção, custo da ação 50), o valor líquido evitado é maior (+34.050). As premissas
-  precisam ser validadas com a área de negócio.
+  falsos alarmes a mais. Com as premissas do ML Canvas, o valor líquido evitado é de US$ 268.059,
+  contra US$ 242.910 do baseline (**+US$ 25.149**). As premissas precisam ser validadas com a área
+  de negócio.
 - **Limite:** um AUC de 0,68 indica poder de ordenação moderado. O modelo serve para priorizar a
   campanha, não para decidir cliente a cliente com alta certeza. Limitações e vieses estão no
   [Model Card](docs/model_card.md).
