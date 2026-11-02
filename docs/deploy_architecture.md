@@ -58,9 +58,10 @@ flowchart LR
 
 ## 4. Fluxos de inferência
 
-**Lote (quinzenal):**
+**Lote (quinzenal)** *(proposta: o job ainda não existe; a rota `/predict/batch` já está pronta)*:
 
-1. Um job agendado extrai os clientes ativos com 6 meses ou mais de serviço.
+1. Um job agendado extrai os clientes ativos com 6 meses ou mais de serviço (a API recusa os mais
+   novos com 422).
 2. O job envia a base em partes de até 1.000 clientes para `POST /predict/batch`.
 3. As probabilidades são gravadas e a fila é ordenada da maior para a menor.
 4. A equipe recebe a fila e aborda os clientes do topo até o limite da capacidade. O grupo de

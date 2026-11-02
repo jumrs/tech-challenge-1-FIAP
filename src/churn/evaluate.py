@@ -30,11 +30,12 @@ TEST_REPORT_CSV = REPORTS_DIR / "test_evaluation.csv"
 TEST_REPORT_MD = REPORTS_DIR / "test_evaluation.md"
 # Fracoes da base abordadas numa campanha de retencao (clientes de maior risco primeiro).
 TOP_FRACTIONS = (0.10, 0.20)
-# Premissas ilustrativas da metrica de negocio: devem ser validadas com a area de negocio.
+# Premissas do ML Canvas (US$, mediana de MonthlyRevenue = 48,46): o cliente perdido vale 12 meses
+# de receita, a oferta e 20% de desconto por 3 meses e retem 35% dos clientes abordados.
 BUSINESS_ASSUMPTIONS = {
-    "customer_value": 1000.0,
-    "retention_success_rate": 0.30,
-    "action_cost": 50.0,
+    "customer_value": 581.52,
+    "retention_success_rate": 0.35,
+    "action_cost": 29.08,
 }
 
 
@@ -92,7 +93,7 @@ def _to_markdown_report(
             "- `brier` e `mean_probability`: calibracao das probabilidades (taxa real no teste "
             f"de {churn_rate:.3f}).",
             "- `topN_*`: abordando so os N% de clientes de maior risco.",
-            f"- Metricas de custo com premissas ilustrativas: {assumptions}.",
+            f"- Metricas de custo em US$, com as premissas do ML Canvas: {assumptions}.",
             (
                 "- Diferenca de AUC-ROC (campeao - baseline): "
                 f"{auc_difference['auc_difference']:+.4f} "

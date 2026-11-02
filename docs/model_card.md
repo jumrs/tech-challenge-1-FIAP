@@ -27,13 +27,15 @@ conjunto de teste reservado (`docs/reports/test_evaluation.md`) e podem ser repr
 - **O modelo é apoio à decisão.** A ação (oferta de retenção) é decidida pela equipe.
 - **`churn_probability`** é uma probabilidade calibrada: um grupo de clientes com 0,30 de média
   tem cerca de 30% de churn real. Pode ser usada em estimativas financeiras.
-- **`churn_prediction`** (corte de 0,270) marca **53% da base**, porque o corte favorece o recall
-  (um falso negativo custa ~20 vezes um falso positivo). Para a campanha, use a **ordem** e aborde
-  até o limite da capacidade (10% a 20% da base).
+- **`churn_prediction`** (corte de 0,270) marca **53% da base**. O corte maximiza o F1, que favorece
+  o recall. Isso é coerente com o custo do erro (um falso negativo custa ~20 vezes um falso
+  positivo), mas o F1 não usa esses custos. Para a campanha, use a **ordem** e aborde até o limite
+  da capacidade (10% a 20% da base).
 
 ### Fora de escopo
 
-- **Clientes com menos de 6 meses de serviço.** O treino só tem clientes de 6 a 61 meses.
+- **Clientes com menos de 6 meses de serviço.** O treino só tem clientes de 6 a 61 meses. A API
+  recusa esses clientes com erro 422.
 - **Decisões que prejudiquem o cliente**, como negar crédito, piorar condições ou cobrar multa
   com base no risco. O modelo foi feito para **oferecer** um benefício, não para restringir.
 - **Inferência causal.** O modelo não mostra que uma oferta reduz o churn. Isso exige o grupo de
@@ -135,8 +137,9 @@ Sem a calibração, a média prevista era 0,44 para um churn real de 0,29.
    25%. São imputados pela mediana e sinalizados por `Demographics_Missing`.
 7. **Efeito da própria campanha.** Em produção, clientes abordados e retidos deixam de aparecer
    como churn, o que distorce retreinos futuros. Só o grupo de controle dá rótulos limpos.
-8. **Premissas de negócio não validadas.** Valor do cliente, custo da oferta e taxa de sucesso de
-   35% são ilustrativos.
+8. **Premissas de negócio não validadas.** As métricas de custo usam as premissas do ML Canvas
+   (cliente perdido = US$ 581,52, oferta = US$ 29,08, 35% de sucesso). Com elas, o campeão evita
+   US$ 25.149 a mais que o baseline no teste, mas os valores precisam ser validados pela operadora.
 
 ## 7. Análise de vieses (desempenho por subgrupo, teste)
 
@@ -183,9 +186,11 @@ ser usado para ações restritivas (seção 2).
   medir quanto AUC se perde. Se a perda for pequena, preferir a versão sem elas.
 - Validar com o jurídico o uso de dados demográficos à luz da LGPD (finalidade e base legal).
 
-## 8. Monitoramento e retreino
+## 8. Monitoramento e retreino *(proposta)*
 
-Resumo do `docs/ml_canvas.md` (seções Building Models e Monitoring):
+Resumo do `docs/ml_canvas.md` (seções Building Models e Monitoring). Hoje a API já registra
+latência, status e erros 422 nos logs; o restante é o desenho proposto para a operação, ainda não
+implementado:
 
 - **Retreino:** trimestral, ou antes, se ocorrer qualquer um dos casos abaixo:
   - PSI > 0,2 em uma variável principal;
@@ -201,5 +206,5 @@ Resumo do `docs/ml_canvas.md` (seções Building Models e Monitoring):
 ```bash
 uv sync
 uv run python -m churn.main      # treina, compara, salva o campeão e gera docs/reports/
-uv run pytest                    # 25 testes
+uv run pytest                    # 26 testes
 ```
