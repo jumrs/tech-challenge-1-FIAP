@@ -10,11 +10,11 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sklearn.pipeline import Pipeline
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from churn.config import CHAMPION_MODEL_PATH, PREDICTION_THRESHOLD
+from churn.config import CHAMPION_MODEL_PATH
 from churn.logger import get_logger
+from churn.model import clf_name, get_threshold
 from churn.schema import CustomerFeatures
 
 logger = get_logger(__name__)
@@ -121,19 +121,17 @@ class HealthResponse(BaseModel):
     model: str | None
 
 
-def load_model(path: Path) -> Pipeline | None:
+def load_model(path: Path):
     """Carrega o pipeline campeao; sem o arquivo, a API sobe em modo degradado."""
 
     if not path.exists():
         logger.warning(f"Modelo nao encontrado em {path}. Rode `uv run python -m churn.main`.")
         return None
     model = joblib.load(path)
-    logger.info(f"Modelo carregado de {path}: {_model_name(model)}.")
+    logger.info(
+        f"Modelo carregado de {path}: {clf_name(model)} (corte {get_threshold(model):.3f})."
+    )
     return model
-
-
-def _model_name(model: Pipeline) -> str:
-    return type(model.named_steps["classifier"]).__name__
 
 
 @asynccontextmanager
@@ -168,30 +166,33 @@ class LatencyLoggingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(LatencyLoggingMiddleware)
 
 
-def _get_model(request: Request) -> Pipeline:
+def _get_model(request: Request):
     model = request.app.state.model
     if model is None:
         raise HTTPException(
             status_code=503,
-            detail="Modelo indisponivel. Treine com `uv run python -m churn.main` e reinicie a API.",
+            detail=(
+                "Modelo indisponivel. Treine com `uv run python -m churn.main` e reinicie a API."
+            ),
         )
     return model
 
 
-def _predict(model: Pipeline, customers: list[CustomerPayload]) -> list[PredictionResponse]:
+def _predict(model, customers: list[CustomerPayload]) -> list[PredictionResponse]:
     """Monta o DataFrame bruto e aplica o pipeline completo (feature engineering incluso)."""
 
     frame = pd.DataFrame([customer.model_dump(exclude={"CustomerID"}) for customer in customers])
     frame[NUMERIC_FIELDS] = frame[NUMERIC_FIELDS].astype(float)
     probabilities = model.predict_proba(frame)[:, 1]
+    threshold = round(get_threshold(model), 4)
     return [
         PredictionResponse(
             CustomerID=customer.CustomerID,
             churn_probability=round(float(probability), 4),
-            churn_prediction=int(probability >= PREDICTION_THRESHOLD),
-            threshold=PREDICTION_THRESHOLD,
+            churn_prediction=int(probability >= threshold),
+            threshold=threshold,
         )
-        for customer, probability in zip(customers, probabilities)
+        for customer, probability in zip(customers, probabilities, strict=True)
     ]
 
 
@@ -208,7 +209,7 @@ def health(request: Request) -> HealthResponse:
     return HealthResponse(
         status="ok" if model is not None else "degraded",
         model_loaded=model is not None,
-        model=_model_name(model) if model is not None else None,
+        model=clf_name(model) if model is not None else None,
     )
 
 

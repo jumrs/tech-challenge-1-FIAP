@@ -16,8 +16,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 BASELINE_MODEL_PATH = MODELS_DIR / "baseline_logreg.joblib"
 CHAMPION_MODEL_PATH = MODELS_DIR / "champion.joblib"
 
-# Corte de classificacao da API: 0,5, o mesmo usado nas metricas da CV. Os pesos de classe
-# deslocam as probabilidades para o lado do churn, entao 0,5 nao e a taxa base de 28,8%.
+# Corte padrao (baseline). O campeao usa o corte salvo no proprio modelo.
 PREDICTION_THRESHOLD = 0.5
 
 # MLflow: mesmo backend e experimento usados no notebook.
