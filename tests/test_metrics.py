@@ -25,7 +25,11 @@ def test_threshold_changes_class_metrics_but_not_auc():
 
 def test_cost_tradeoff_metrics():
     result = cost_tradeoff_metrics(
-        Y_TRUE, Y_PROB, threshold=0.5, customer_value=1000, retention_success_rate=0.5,
+        Y_TRUE,
+        Y_PROB,
+        threshold=0.5,
+        customer_value=1000,
+        retention_success_rate=0.5,
         action_cost=100,
     )
 

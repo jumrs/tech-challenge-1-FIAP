@@ -1,7 +1,7 @@
 [project]
 name = "tech-challenge-1-fiap"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pipeline preditivo de churn em telecom (Cell2Cell) com Scikit-Learn e API FastAPI"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -30,14 +30,25 @@ addopts = "-q"
 dev = [
     "httpx2>=2.15.1",
     "pytest>=9.1.1",
+    "ruff>=0.17.3",
 ]
 training = [
+    "ipykernel>=7.4.0",
     "kagglehub>=1.0.2",
     "matplotlib>=3.11.2",
     "mlflow>=3.17.1",
+    "optuna>=5.0.0",
     "seaborn>=0.13.2",
 ]
 
 [tool.uv]
 # `uv sync` instala tudo localmente; a imagem Docker instala so as dependencias da API.
 default-groups = ["dev", "training"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["notebooks", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

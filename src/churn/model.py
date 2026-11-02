@@ -3,13 +3,15 @@
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectFromModel
+from sklearn.model_selection import StratifiedKFold, TunedThresholdClassifierCV
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
-from churn.config import RANDOM_SEED
+from churn.config import PREDICTION_THRESHOLD, RANDOM_SEED
 from churn.features import build_preprocessor
 
 # (classe, parametros fixos), como no notebook. n_jobs=1: o paralelismo fica nos folds da CV.
@@ -41,6 +43,26 @@ MODELS = {
         },
     ),
 }
+
+
+# Tuning do campeao (Optuna, ver notebook). A comparacao usa os parametros de MODELS.
+TUNED_PARAMS = {
+    "LightGBM": {
+        "n_estimators": 506,
+        "learning_rate": 0.010801671793357538,
+        "num_leaves": 113,
+        "min_child_samples": 23,
+        "subsample": 0.6023864197911676,
+        "subsample_freq": 1,
+        "colsample_bytree": 0.9157841081557863,
+        "reg_lambda": 0.5184997421242614,
+    },
+}
+
+# O class_weight infla as probabilidades. A calibracao corrige, e o corte e escolhido por CV.
+CALIBRATION_METHOD = "sigmoid"
+CALIBRATION_FOLDS = 5
+THRESHOLD_SCORING = "f1"
 
 
 def scale_pos_weight(y_train: pd.Series) -> float:
@@ -89,3 +111,52 @@ def build_model_pipeline(
             ("classifier", model_class(**(fixed_params | params))),
         ]
     ).set_output(transform="pandas")  # mantem os nomes das colunas ate o seletor
+
+
+def build_champion(
+    name: str,
+    x_train: pd.DataFrame,
+    y_train: pd.Series,
+    *,
+    select_features: bool = True,
+    threshold: str | float = "median",
+    **params,
+) -> TunedThresholdClassifierCV:
+    """Pipeline do campeao com tuning, calibracao e corte escolhido por CV (best_threshold_)."""
+
+    pipeline = build_model_pipeline(
+        name,
+        x_train,
+        y_train,
+        select_features=select_features,
+        threshold=threshold,
+        **(TUNED_PARAMS.get(name, {}) | params),
+    )
+    classifier = pipeline.steps[-1][1]
+    pipeline.steps[-1] = (
+        "classifier",
+        CalibratedClassifierCV(classifier, method=CALIBRATION_METHOD, cv=CALIBRATION_FOLDS),
+    )
+    return TunedThresholdClassifierCV(
+        pipeline,
+        scoring=THRESHOLD_SCORING,
+        cv=StratifiedKFold(n_splits=CALIBRATION_FOLDS, shuffle=True, random_state=RANDOM_SEED),
+        random_state=RANDOM_SEED,
+    )
+
+
+def get_pipeline(model) -> Pipeline:
+
+    return model.estimator_ if isinstance(model, TunedThresholdClassifierCV) else model
+
+
+def clf_name(model) -> str:
+    classifier = get_pipeline(model).named_steps["classifier"]
+    if isinstance(classifier, CalibratedClassifierCV):
+        classifier = classifier.estimator
+    return type(classifier).__name__
+
+
+def get_threshold(model) -> float:
+
+    return float(getattr(model, "best_threshold_", PREDICTION_THRESHOLD))

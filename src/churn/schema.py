@@ -1,4 +1,3 @@
-
 from typing import Annotated, Literal, Self
 
 import pandas as pd
@@ -134,7 +133,10 @@ def _format_errors(error: ValidationError, index: pd.Index) -> str:
         position, *field = err["loc"]
         if field:
             column = ".".join(map(str, field))
-            lines.append(f"linha {index[position]}, coluna {column!r}: {err['msg']} (valor={err.get('input')!r})")
+            value = err.get("input")
+            lines.append(
+                f"linha {index[position]}, coluna {column!r}: {err['msg']} (valor={value!r})"
+            )
         else:
             # Erros do model_validator valem para o registro inteiro: mostra so o CustomerID.
             customer_id = err["input"].get("CustomerID")

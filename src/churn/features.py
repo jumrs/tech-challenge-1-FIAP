@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -130,9 +129,7 @@ def build_preprocessor(df: pd.DataFrame) -> Pipeline:
         steps=[
             (
                 "features",
-                FunctionTransformer(
-                    engineer_features, feature_names_out=engineered_feature_names
-                ),
+                FunctionTransformer(engineer_features, feature_names_out=engineered_feature_names),
             ),
             ("columns", columns),
         ]

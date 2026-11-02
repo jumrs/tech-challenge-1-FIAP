@@ -115,10 +115,10 @@ def compare_models(data_path: str | Path) -> pd.DataFrame:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     comparison.to_csv(COMPARISON_CSV, index=False)
     COMPARISON_MD.write_text(to_markdown_table(comparison), encoding="utf-8")
-    SELECTION_GAIN_MD.write_text(
-        to_markdown_table(selection_gain.reset_index()), encoding="utf-8"
+    SELECTION_GAIN_MD.write_text(to_markdown_table(selection_gain.reset_index()), encoding="utf-8")
+    logger.info(
+        f"Comparacao de {len(comparison)} runs salva em {COMPARISON_CSV} e {COMPARISON_MD}."
     )
-    logger.info(f"Comparacao de {len(comparison)} runs salva em {COMPARISON_CSV} e {COMPARISON_MD}.")
     return comparison
 
 

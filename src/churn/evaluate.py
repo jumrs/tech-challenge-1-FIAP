@@ -6,7 +6,6 @@ from pathlib import Path
 import joblib
 import mlflow
 import pandas as pd
-from sklearn.pipeline import Pipeline
 
 from churn.compare_models import REPORTS_DIR, to_markdown_table
 from churn.config import (
@@ -14,7 +13,6 @@ from churn.config import (
     CHAMPION_MODEL_PATH,
     MLFLOW_EXPERIMENT,
     MLFLOW_TRACKING_URI,
-    PREDICTION_THRESHOLD,
 )
 from churn.data import load_churn_csv, split_features_target, split_train_test
 from churn.logger import get_logger
@@ -24,6 +22,7 @@ from churn.metrics import (
     cost_tradeoff_metrics,
     top_k_metrics,
 )
+from churn.model import clf_name, get_threshold
 
 logger = get_logger(__name__)
 
@@ -39,7 +38,7 @@ BUSINESS_ASSUMPTIONS = {
 }
 
 
-def _load_model(path: Path) -> Pipeline:
+def _load_model(path: Path):
     if not path.exists():
         raise FileNotFoundError(
             f"Modelo nao encontrado em {path}. Rode `uv run python -m churn.main` antes."
@@ -48,26 +47,31 @@ def _load_model(path: Path) -> Pipeline:
 
 
 def evaluate_models(
-    models: dict[str, Pipeline],
+    models: dict,
     x_test: pd.DataFrame,
     y_test: pd.Series,
-    threshold: float = PREDICTION_THRESHOLD,
+    threshold: float | None = None,
 ) -> tuple[pd.DataFrame, dict[str, pd.Series]]:
-    """Metricas tecnicas, de campanha (top X%) e de custo de cada modelo no teste."""
+    """Metricas tecnicas, de campanha (top X%) e de custo de cada modelo no teste.
+
+    Sem `threshold`, cada modelo usa o proprio corte.
+    """
 
     columns = {}
     probabilities = {}
     for name, model in models.items():
+        cutoff = get_threshold(model) if threshold is None else threshold
         y_prob = pd.Series(model.predict_proba(x_test)[:, 1], index=x_test.index)
         probabilities[name] = y_prob
-        metrics = binary_classification_metrics(y_test, y_prob, threshold=threshold)
+        metrics = {"threshold": cutoff}
+        metrics |= binary_classification_metrics(y_test, y_prob, threshold=cutoff)
+        metrics["brier"] = float(((y_prob - y_test) ** 2).mean())
+        metrics["mean_probability"] = float(y_prob.mean())
         for fraction in TOP_FRACTIONS:
             label = f"top{int(fraction * 100)}"
             top = top_k_metrics(y_test, y_prob, fraction)
             metrics |= {f"{label}_{key}": value for key, value in top.items()}
-        metrics |= cost_tradeoff_metrics(
-            y_test, y_prob, threshold=threshold, **BUSINESS_ASSUMPTIONS
-        )
+        metrics |= cost_tradeoff_metrics(y_test, y_prob, threshold=cutoff, **BUSINESS_ASSUMPTIONS)
         columns[name] = metrics
     return pd.DataFrame(columns), probabilities
 
@@ -83,11 +87,15 @@ def _to_markdown_report(
             "# Avaliacao final no conjunto de teste",
             "",
             f"- Conjunto de teste: {n_test} clientes (20% reservados), churn de {churn_rate:.1%}.",
-            f"- Corte de classificacao: {PREDICTION_THRESHOLD}.",
-            f"- `topN_*`: abordando so os N% de clientes de maior risco.",
+            "- Corte de classificacao (linha `threshold`): o do campeao foi escolhido por CV no "
+            "treino (maior F1); o do baseline e 0,5.",
+            "- `brier` e `mean_probability`: calibracao das probabilidades (taxa real no teste "
+            f"de {churn_rate:.3f}).",
+            "- `topN_*`: abordando so os N% de clientes de maior risco.",
             f"- Metricas de custo com premissas ilustrativas: {assumptions}.",
             (
-                f"- Diferenca de AUC-ROC (campeao - baseline): {auc_difference['auc_difference']:+.4f} "
+                "- Diferenca de AUC-ROC (campeao - baseline): "
+                f"{auc_difference['auc_difference']:+.4f} "
                 f"(IC 95% bootstrap: {auc_difference['ci_low']:+.4f} a "
                 f"{auc_difference['ci_high']:+.4f})."
             ),
@@ -102,7 +110,7 @@ def evaluate_on_test(data_path: str | Path) -> pd.DataFrame:
 
     baseline = _load_model(BASELINE_MODEL_PATH)
     champion = _load_model(CHAMPION_MODEL_PATH)
-    champion_name = f"Campeao ({type(champion.named_steps['classifier']).__name__})"
+    champion_name = f"Campeao ({clf_name(champion)})"
     baseline_name = "Regressao Logistica (baseline)"
 
     df = load_churn_csv(data_path)
@@ -123,10 +131,17 @@ def evaluate_on_test(data_path: str | Path) -> pd.DataFrame:
     with mlflow.start_run(run_name="AVALIACAO FINAL | teste"):
         mlflow.set_tags({"etapa": "avaliacao_final"})
         mlflow.log_params(
-            {"campeao": champion_name, "threshold": PREDICTION_THRESHOLD, **BUSINESS_ASSUMPTIONS}
+            {
+                "campeao": champion_name,
+                "threshold_campeao": get_threshold(champion),
+                "threshold_baseline": get_threshold(baseline),
+                **BUSINESS_ASSUMPTIONS,
+            }
         )
         for column, prefix in [(champion_name, "champion"), (baseline_name, "baseline")]:
-            mlflow.log_metrics({f"test_{prefix}_{key}": value for key, value in table[column].items()})
+            mlflow.log_metrics(
+                {f"test_{prefix}_{key}": value for key, value in table[column].items()}
+            )
         mlflow.log_metrics({f"test_{key}": value for key, value in auc_difference.items()})
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)

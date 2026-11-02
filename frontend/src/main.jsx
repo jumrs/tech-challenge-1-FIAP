@@ -118,18 +118,20 @@ const modelData = [
   { name: "XGBoost", score: 0.657 },
   { name: "Random Forest", score: 0.67 },
   { name: "LightGBM", score: 0.678 },
+  { name: "LightGBM ajustado", score: 0.686 },
 ];
 const concentrationData = [
   { name: "Base de teste", value: 28.8 },
-  { name: "Top 20% do modelo", value: 48.6 },
-  { name: "Top 10% do modelo", value: 54.5 },
+  { name: "Top 20% do modelo", value: 50.2 },
+  { name: "Top 10% do modelo", value: 55.8 },
 ];
 const testMetrics = [
-  { metric: "AUC-ROC", base: "0,647", winner: "0,677", gain: "+0,030" },
-  { metric: "PR-AUC", base: "0,412", winner: "0,454", gain: "+0,043" },
-  { metric: "Precisão", base: "0,380", winner: "0,404", gain: "+0,023" },
-  { metric: "Recall", base: "0,650", winner: "0,631", gain: "−0,019", negative: true },
-  { metric: "Lift no top 10%", base: "1,69x", winner: "1,89x", gain: "+0,20" },
+  { metric: "AUC-ROC", base: "0,647", winner: "0,684", gain: "+0,037" },
+  { metric: "PR-AUC", base: "0,412", winner: "0,463", gain: "+0,051" },
+  { metric: "Precisão", base: "0,380", winner: "0,384", gain: "+0,004" },
+  { metric: "Recall", base: "0,650", winner: "0,712", gain: "+0,062" },
+  { metric: "Lift no top 10%", base: "1,69x", winner: "1,94x", gain: "+0,25" },
+  { metric: "Brier (calibração)", base: "0,234", winner: "0,187", gain: "−0,047" },
 ];
 
 const CHART_PRIMARY = "#1677ff";
@@ -589,8 +591,8 @@ function Overview({ predictionProps }) {
         items={[
           { title: "Clientes na base", value: "51.047", detail: "Base bruta; 51.045 após a limpeza", source: "documented" },
           { title: "Churn histórico", value: "28,8%", detail: "Proporção observada na base", source: "documented" },
-          { title: "AUC-ROC no teste", value: "0,677", detail: "LightGBM · baseline 0,647", source: "documented" },
-          { title: "Lift no top 10%", value: "1,89x", detail: "Baseline: 1,69x", source: "documented" },
+          { title: "AUC-ROC no teste", value: "0,684", detail: "LightGBM · baseline 0,647", source: "documented" },
+          { title: "Lift no top 10%", value: "1,94x", detail: "Baseline: 1,69x", source: "documented" },
         ]}
       />
       <Row gutter={[16, 16]} className="section">
@@ -612,7 +614,7 @@ function Overview({ predictionProps }) {
               </BarChart>
             </ResponsiveContainer>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Entre os 10% de clientes com maior probabilidade, 54,5% cancelaram, contra 28,8% na base de teste inteira. O modelo serve para ordenar a fila; a oferta e a decisão continuam com o negócio.
+              Entre os 10% de clientes com maior probabilidade, 55,8% cancelaram, contra 28,8% na base de teste inteira. O modelo serve para ordenar a fila; a oferta e a decisão continuam com o negócio.
             </Paragraph>
           </Card>
         </Col>
@@ -761,7 +763,7 @@ function DataView() {
           items={[
             { key: "fid", label: "Fidelidade", children: <><Text strong>11–12 meses</Text><br /><Text type="secondary">Janela de maior risco perto do fim do contrato.</Text></> },
             { key: "eq", label: "Equipamento", children: <><Text strong>Aparelho antigo</Text><br /><Text type="secondary">Tempo com o aparelho atual aparece entre os sinais.</Text></> },
-            { key: "camp", label: "Campanha", children: <><Text strong>Top 10%</Text><br /><Text type="secondary">54,5% dos clientes nessa faixa cancelaram no teste.</Text></> },
+            { key: "camp", label: "Campanha", children: <><Text strong>Top 10%</Text><br /><Text type="secondary">55,8% dos clientes nessa faixa cancelaram no teste.</Text></> },
           ]}
         />
       </Card>
@@ -795,7 +797,7 @@ function ModelsView() {
         </Col>
         <Col xs={24} lg={10}>
           <Card title="Modelo escolhido" extra={<SourceTag kind="documented" />} style={{ height: "100%" }}>
-            <Statistic title="LightGBM · AUC-ROC médio na validação cruzada" value="0,678" />
+            <Statistic title="LightGBM ajustado · AUC-ROC médio na validação cruzada" value="0,686" />
             <Descriptions
               bordered
               size="small"
@@ -803,16 +805,17 @@ function ModelsView() {
               style={{ marginTop: 16 }}
               items={[
                 { key: "base", label: "Baseline (regressão logística)", children: "0,652" },
-                { key: "diff", label: "Diferença na validação", children: "+0,026" },
-                { key: "test", label: "AUC-ROC no teste reservado", children: "0,677" },
+                { key: "diff", label: "Diferença na validação", children: "+0,034" },
+                { key: "test", label: "AUC-ROC no teste reservado", children: "0,684" },
                 { key: "sel", label: "Seleção de variáveis", children: "Não" },
+                { key: "cal", label: "Ajuste", children: "Tuning (Optuna), calibração sigmoide e corte por CV" },
               ]}
             />
           </Card>
         </Col>
       </Row>
       <Card title="Avaliação final no teste" extra={<SourceTag kind="documented" />}>
-        <Paragraph type="secondary">10.209 clientes reservados, corte de 0,5.</Paragraph>
+        <Paragraph type="secondary">10.209 clientes reservados. Corte do LightGBM: 0,270 (escolhido por CV); baseline: 0,5.</Paragraph>
         <Table
           size="middle"
           rowKey="metric"
@@ -827,7 +830,7 @@ function ModelsView() {
           ]}
         />
         <Paragraph type="secondary" style={{ margin: "12px 0 0" }}>
-          O recall do LightGBM ficou abaixo do baseline no corte de 0,5. O ganho está na ordenação (AUC, PR-AUC e lift), que é o uso proposto para a fila de retenção.
+          O ganho principal está na ordenação (AUC, PR-AUC e lift), que é o uso proposto para a fila de retenção. As probabilidades são calibradas: a média prevista (0,290) bate com a taxa real (0,288).
         </Paragraph>
       </Card>
     </>
@@ -1073,7 +1076,7 @@ function QueueView({ apiState, batch, onNavigate }) {
           { title: "Clientes no lote", value: run ? run.predictions.length : "—", detail: run ? formatDate(run.createdAt) : "Nenhum lote gerado", source: "synthetic" },
           { title: `Acima do corte (${threshold})`, value: run ? above : "—", detail: "churn_prediction = 1", source: "api" },
           { title: "Maior probabilidade", value: run ? formatPercent(queue[0].churn_probability) : "—", detail: run ? `CustomerID ${queue[0].CustomerID}` : "—", source: "api" },
-          { title: "Referência do top 10%", value: "54,5%", detail: "Precisão no teste reservado", source: "documented" },
+          { title: "Referência do top 10%", value: "55,8%", detail: "Precisão no teste reservado", source: "documented" },
         ]}
       />
       <Card className="section" title="Fila do lote">

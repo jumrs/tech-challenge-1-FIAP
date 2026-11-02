@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 import churn.api as api
 from churn.api import EXAMPLE_CUSTOMER
-from churn.model import build_model_pipeline
+from churn.model import build_champion, build_model_pipeline
 
 
 @pytest.fixture
@@ -62,3 +62,18 @@ def test_without_model_health_is_degraded_and_predict_returns_503(tmp_path, monk
     with TestClient(api.app) as client:
         assert client.get("/health").json()["status"] == "degraded"
         assert client.post("/predict", json=EXAMPLE_CUSTOMER).status_code == 503
+
+
+def test_predict_threshold(xy_train, tmp_path, monkeypatch):
+    x, y = xy_train
+    model = build_champion("LightGBM", x, y, select_features=False, n_estimators=20)
+    joblib.dump(model.fit(x, y), tmp_path / "champion.joblib")
+    monkeypatch.setattr(api, "MODEL_PATH", tmp_path / "champion.joblib")
+
+    with TestClient(api.app) as client:
+        health = client.get("/health").json()
+        body = client.post("/predict", json=EXAMPLE_CUSTOMER).json()
+
+    assert health["model"] == "LGBMClassifier"
+    assert body["threshold"] == round(model.best_threshold_, 4)
+    assert body["churn_prediction"] == int(body["churn_probability"] >= body["threshold"])
