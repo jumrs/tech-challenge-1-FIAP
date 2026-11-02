@@ -4,7 +4,7 @@
 - Corte de classificacao (linha `threshold`): o do campeao foi escolhido por CV no treino (maior F1); o do baseline e 0,5.
 - `brier` e `mean_probability`: calibracao das probabilidades (taxa real no teste de 0.288).
 - `topN_*`: abordando so os N% de clientes de maior risco.
-- Metricas de custo com premissas ilustrativas: customer_value=1000.0, retention_success_rate=0.3, action_cost=50.0.
+- Metricas de custo em US$, com as premissas do ML Canvas: customer_value=581.52, retention_success_rate=0.35, action_cost=29.08.
 - Diferenca de AUC-ROC (campeao - baseline): +0.0366 (IC 95% bootstrap: +0.0288 a +0.0444).
 
 | metrica | Regressao Logistica (baseline) | Campeao (LGBMClassifier) | ganho_campeao |
@@ -28,7 +28,7 @@
 | false_positives | 3117.0 | 3356.0 | 239.0 |
 | false_negatives | 1030.0 | 846.0 | -184.0 |
 | true_positives | 1912.0 | 2096.0 | 184.0 |
-| retention_action_cost | 251450.0 | 272600.0 | 21150.0 |
-| missed_churn_cost | 309000.0 | 253800.0 | -55200.0 |
-| avoided_churn_value | 573600.0 | 628800.0 | 55200.0 |
-| net_avoided_churn_value | 322150.0 | 356200.0 | 34050.0 |
+| retention_action_cost | 146243.32 | 158544.16 | 12300.84 |
+| missed_churn_cost | 209637.96 | 172188.072 | -37449.888 |
+| avoided_churn_value | 389153.184 | 426603.072 | 37449.888 |
+| net_avoided_churn_value | 242909.864 | 268058.912 | 25149.048 |
