@@ -38,7 +38,7 @@ Para rodar os testes: `uv run pytest`. Para treinar tudo de novo (cerca de 4 min
 | 1. ML Canvas, EDA, métricas e baseline | [`docs/ml_canvas.md`](docs/ml_canvas.md), [`notebooks/tech_challenge_1_FIAP.ipynb`](notebooks/tech_challenge_1_FIAP.ipynb), [`src/churn/baseline.py`](src/churn/baseline.py) |
 | 2. Random Forest, MLP, validação cruzada, comparação e modelo salvo | [`docs/reports/model_comparison.md`](docs/reports/model_comparison.md), [`docs/reports/test_evaluation.md`](docs/reports/test_evaluation.md), [`models/champion.joblib`](models/), experimentos no MLflow |
 | 3. Código em `src/`, testes e API (`/health`, `/predict`) | [`src/churn/`](src/churn/), [`tests/`](tests/) (26 testes), [`src/churn/api.py`](src/churn/api.py) |
-| 4. Model Card, README e vídeo STAR | [`docs/model_card.md`](docs/model_card.md), este README, vídeo: `<link do vídeo>` |
+| 4. Model Card, README e vídeo STAR | [`docs/model_card.md`](docs/model_card.md), este README, vídeo: `https://youtu.be/cUbmnpH4Rcw` |
 | Extras | [Docker](#docker), [arquitetura de deploy](docs/deploy_architecture.md), [dashboard](#dashboard-react-para-a-apresentação), [`Makefile`](Makefile), lint com ruff |
 
 ## Problema de negócio
